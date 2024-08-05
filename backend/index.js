@@ -65,24 +65,6 @@ app.post('/upload', (req, res) => {
 app.use('/images', express.static('upload/images'));
 
 
-
-
-
-const fetchuser = async (req, res, next) => {
-  const token = req.header("auth-token");
-  if (!token) {
-    res.status(401).send({ errors: "Please authenticate using a valid token" });
-  }
-  try {
-    const data = jwt.verify(token, "secret_ecom");
-    req.user = data.user;
-    next();
-  } catch (error) {
-    res.status(401).send({ errors: "Please authenticate using a valid token" });
-  }
-};
-
-
 app.get("/", (req, res) => {
   res.send("Root");
 });
@@ -302,18 +284,7 @@ app.get('/countries', async (req, res) => {
     });
     
     
-    
-
-    
-    
-
-app.get("/newcollections", async (req, res) => {
-	
-});
-
-app.get("/popularinwomen", async (req, res) => {
-
-});
+  
 
   app.post('/addproduct', async (req, res) => {
     const newProductData = {
@@ -2226,22 +2197,6 @@ app.get("/allordenes", async (req, res) => {
   }
 });
 
-app.get("/estadosordenes", async (req, res) => {
-  try {
-    const connection = await oracledb.getConnection(dbConfig);
-    const result = await connection.execute(
-      `SELECT id, estado FROM ESTADO_ORDEN`
-    );
-    await connection.close();
-    res.json(result.rows.map(row => ({
-      id: row[0],
-      estado: row[1]
-    })));
-  } catch (error) {
-    console.error('Error fetching estado ordenes:', error);
-    res.status(500).json([]);
-  }
-});
 
 
 app.get("/estadoordenes", async (req, res) => {
