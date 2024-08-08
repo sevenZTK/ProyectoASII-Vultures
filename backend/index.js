@@ -1534,22 +1534,31 @@ app.put("/cartItems/updateQuantity/:itemId", async (req, res) => {
 app.get("/userAddresses/:userId", async (req, res) => {
   const userId = req.params.userId;
   try {
-    const connection = await oracledb.getConnection(dbConfig);
-    const result = await connection.execute(
+    // Crear una conexión a MySQL
+    const connection = await mysql.createConnection(dbConfig);
+
+    // Ejecutar la consulta
+    const [rows] = await connection.execute(
       `SELECT d.ciudad, d.direccion, d.id
        FROM DIRECCION d
        INNER JOIN DIRECCION_USUARIO du ON d.id = du.id_direccion
-       WHERE du.id_usuario = :userId`,
-      [userId]
+       WHERE du.id_usuario = ?`, // Utilizar ? como marcador de posición
+      [userId] // Pasar el parámetro
     );
 
-    const addresses = result.rows.map((row) => ({
-      ciudad: row[0],
-      direccion: row[1],
-      id: row[2]
+    // Formatear los resultados
+    const addresses = rows.map((row) => ({
+      ciudad: row.ciudad,
+      direccion: row.direccion,
+      id: row.id
     }));
-    console.log("INFO DIRECCIONES: ", result.rows);
-    await connection.close();
+    
+    console.log("INFO DIRECCIONES: ", rows);
+
+    // Cerrar la conexión
+    await connection.end();
+
+    // Enviar la respuesta
     res.json(addresses);
   } catch (error) {
     console.error('Error fetching user addresses:', error);
@@ -1559,18 +1568,25 @@ app.get("/userAddresses/:userId", async (req, res) => {
 
 app.get("/shippingMethods", async (req, res) => {
   try {
-    const connection = await oracledb.getConnection(dbConfig);
-    const result = await connection.execute(
+    // Crear una conexión a MySQL
+    const connection = await mysql.createConnection(dbConfig);
+
+    // Ejecutar la consulta
+    const [rows] = await connection.execute(
       `SELECT id, nombre, precio FROM METODO_ENVIO`
     );
 
-    const shippingMethods = result.rows.map((row) => ({
-      id: row[0],
-      nombre: row[1],
-      precio: row[2]
+    // Formatear los resultados
+    const shippingMethods = rows.map((row) => ({
+      id: row.id,
+      nombre: row.nombre,
+      precio: row.precio
     }));
 
-    await connection.close();
+    // Cerrar la conexión
+    await connection.end();
+
+    // Enviar la respuesta
     res.json(shippingMethods);
   } catch (error) {
     console.error('Error fetching shipping methods:', error);
@@ -1582,26 +1598,26 @@ app.delete('/removeCartItem', async (req, res) => {
   let connection;
   try {
     const userId = req.body.userId;
-    const itemId = parseInt(req.body.itemId);;
-    
+    const itemId = parseInt(req.body.itemId);
+
     // Obtener el id del carrito del usuario
-    connection = await oracledb.getConnection(dbConfig);
-    const getCartIdQuery = `SELECT id FROM CARRITO WHERE id_usuario = :userId`;
-    const cartIdResult = await connection.execute(getCartIdQuery, { userId });
-    
-    
-    if (cartIdResult.rows.length === 0) {
+    connection = await mysql.createConnection(dbConfig);
+    const getCartIdQuery = `SELECT id FROM CARRITO WHERE id_usuario = ?`;
+    const [cartIdResult] = await connection.execute(getCartIdQuery, [userId]);
+
+    if (cartIdResult.length === 0) {
       return res.status(404).json({ success: false, error: 'El usuario no tiene un carrito' });
     }
-    
-    const cartId = parseInt(cartIdResult.rows[0][0]);
-    
+
+    const cartId = parseInt(cartIdResult[0].id);
+
     console.log(cartId, itemId);
-    // Eliminar el artículo del carrito
-    const deleteCartItemQuery = `DELETE FROM CARRITO_ITEM WHERE id = :itemId`;
-    const deleteResult = await connection.execute(deleteCartItemQuery, { itemId }, { autoCommit: true });
     
-    if (deleteResult.rowsAffected && deleteResult.rowsAffected === 1) {
+    // Eliminar el artículo del carrito
+    const deleteCartItemQuery = `DELETE FROM CARRITO_ITEM WHERE id = ?`;
+    const [deleteResult] = await connection.execute(deleteCartItemQuery, [itemId]);
+
+    if (deleteResult.affectedRows && deleteResult.affectedRows === 1) {
       return res.json({ success: true, message: '¡Artículo eliminado del carrito exitosamente!' });
     } else {
       return res.status(500).json({ success: false, error: 'Error al eliminar el artículo del carrito' });
@@ -1612,7 +1628,7 @@ app.delete('/removeCartItem', async (req, res) => {
   } finally {
     if (connection) {
       try {
-        await connection.close();
+        await connection.end();
       } catch (closeError) {
         console.error('Error al cerrar la conexión:', closeError);
       }
@@ -1622,66 +1638,97 @@ app.delete('/removeCartItem', async (req, res) => {
 
 app.post('/addAddress', async (req, res) => {
   const { userId, direccion, estado, ciudad, codigo_postal, id_pais } = req.body;
+  let connection;
+
   try {
-    const connection = await oracledb.getConnection(dbConfig);
+    connection = await mysql.createConnection(dbConfig);
+
+    // Iniciar transacción
+    await connection.beginTransaction();
+
+    // Insertar nueva dirección
     const insertAddressQuery = `
       INSERT INTO DIRECCION (direccion, estado, ciudad, codigo_postal, id_pais)
-      VALUES (:direccion, :estado, :ciudad, :codigo_postal, :id_pais)
-      RETURNING id INTO :id`;
-    const result = await connection.execute(insertAddressQuery, {
+      VALUES (?, ?, ?, ?, ?)`;
+    
+    const [result] = await connection.execute(insertAddressQuery, [
       direccion,
       estado,
       ciudad,
       codigo_postal,
-      id_pais,
-      id: { type: oracledb.NUMBER, dir: oracledb.BIND_OUT }
-    });
-    const direccionId = result.outBinds.id[0];
-    
+      id_pais
+    ]);
+
+    // Obtener el ID de la dirección insertada
+    const direccionId = result.insertId;
+
+    // Insertar relación entre usuario y dirección
     const insertUserAddressQuery = `
       INSERT INTO DIRECCION_USUARIO (id_usuario, id_direccion)
-      VALUES (:userId, :direccionId)`;
-    await connection.execute(insertUserAddressQuery, {
-      userId,
-      direccionId
-    });
+      VALUES (?, ?)`;
 
+    await connection.execute(insertUserAddressQuery, [userId, direccionId]);
+
+    // Confirmar la transacción
     await connection.commit();
-    await connection.close();
+
     res.json({ success: true, message: '¡Dirección agregada exitosamente!' });
   } catch (error) {
     console.error('Error adding address:', error);
+
+    // Revertir la transacción en caso de error
+    if (connection) {
+      try {
+        await connection.rollback();
+      } catch (rollbackError) {
+        console.error('Error al revertir la transacción:', rollbackError);
+      }
+    }
+
     res.status(500).json({ success: false, error: 'Error al agregar la dirección' });
+  } finally {
+    if (connection) {
+      try {
+        await connection.end();
+      } catch (closeError) {
+        console.error('Error al cerrar la conexión:', closeError);
+      }
+    }
   }
 });
 
 app.get("/promo-category", async (req, res) => {
+  let connection;
   try {
-    const currentDate = new Date().toISOString().slice(0, 10);
+    const currentDate = new Date().toISOString().slice(0, 10); // Obtener la fecha actual en formato 'YYYY-MM-DD'
+    
     const query = `
       SELECT pc.id_categoria, cp.id_categoria_padre, cp.nombre_categoria, p.nombre, p.descripcion 
       FROM PROMOCION_CATEGORIA pc
       INNER JOIN PROMOCION p ON pc.id_promocion = p.id
       INNER JOIN CATEGORIA_PRODUCTO cp ON pc.id_categoria = cp.id
-      WHERE TO_DATE(:currentDate, 'YYYY-MM-DD') BETWEEN p.fecha_inicio AND p.fecha_final
-      ORDER BY DBMS_RANDOM.RANDOM
+      WHERE ? BETWEEN p.fecha_inicio AND p.fecha_final
+      ORDER BY RAND()
+      LIMIT 1
     `;
-    const binds = { currentDate };
-    const options = { outFormat: oracledb.OUT_FORMAT_OBJECT };
-    
-    const connection = await oracledb.getConnection(dbConfig);
-    const result = await connection.execute(query, binds, options);
-    await connection.close();
 
-    const promoCategory = result.rows[0];
-    const idPadre = result.rows[1];
-    const nombre = result.rows[2];
-    const promo = result.rows[3];
-    const desc = result.rows[4];
+    const binds = [currentDate];
+
+    connection = await mysql.createConnection(dbConfig);
+    const [rows] = await connection.execute(query, binds);
+
+    await connection.end();
 
     // Verificar si se encontró una promoción activa
-    if (promoCategory) {
-      res.json(promoCategory, idPadre, nombre, promo, desc);
+    if (rows.length > 0) {
+      const promoCategory = rows[0];
+      res.json({
+        idCategoria: promoCategory.id_categoria,
+        idPadre: promoCategory.id_categoria_padre,
+        nombreCategoria: promoCategory.nombre_categoria,
+        nombrePromocion: promoCategory.nombre,
+        descripcionPromocion: promoCategory.descripcion
+      });
     } else {
       res.status(404).json({ error: 'No active promotions found' });
     }
@@ -1701,7 +1748,8 @@ app.post("/checkout", async (req, res) => {
       return res.status(400).json({ error: "Debes seleccionar un método de envío." });
     }
 
-    connection = await oracledb.getConnection(dbConfig);
+    // Establecer conexión con MySQL
+    connection = await mysql.createConnection(dbConfig);
 
     for (const cartItem of cartItems) {
       const { id_item_producto, cantidad } = cartItem;
@@ -1712,26 +1760,31 @@ app.post("/checkout", async (req, res) => {
         FROM CARRITO_ITEM ci
         INNER JOIN ITEM_PRODUCTO ip ON ci.id_item_producto = ip.id
         INNER JOIN PRODUCTO p ON ip.id_producto = p.id
-        WHERE ci.id = :id_item_producto`;
-      const cartItemResult = await connection.execute(cartItemQuery, [id_item_producto]);
-      const [cartItemInfo] = cartItemResult.rows;
+        WHERE ci.id = ?`;
+
+      const [cartItemResult] = await connection.execute(cartItemQuery, [id_item_producto]);
       
-      const cantidad_disp = parseInt(cartItemInfo[1]);
-      const nombre_producto = cartItemInfo[2];
+      if (cartItemResult.length === 0) {
+        return res.status(404).json({ error: "Producto no encontrado en el carrito." });
+      }
+
+      const cartItemInfo = cartItemResult[0];
+
+      const cantidad_disp = parseInt(cartItemInfo.cantidad_disp);
+      const nombre_producto = cartItemInfo.nombre_producto;
       
-      console.log("Nombre Item: ",cartItemInfo[2]);
-      console.log("Cantidad Item: ",cartItemInfo[1]);
+      console.log("Nombre Item: ", nombre_producto);
+      console.log("Cantidad Item: ", cantidad_disp);
       console.log("Cantidad carrito: ", cantidad);
+
       // Verificar la disponibilidad del producto
       if (cantidad_disp < cantidad) {
         console.log("ERROR: NO HAY EXISTENCIAS SUFICIENTES DE ", nombre_producto);
         console.log("Solo hay ", cantidad_disp, " existencias");
         return res.status(400).json({ error: `No hay suficientes existencias de ${nombre_producto}. Solo hay ${cantidad_disp} disponibles.` });
-    }
-    
+      }
     }
 
-    // Si todas las verificaciones pasan, se realiza el checkout
     // Aquí podrías agregar la lógica para procesar el pago y actualizar el estado del carrito, etc.
 
     res.json({ success: true, message: "Compra realizada exitosamente." });
@@ -1742,7 +1795,7 @@ app.post("/checkout", async (req, res) => {
   } finally {
     if (connection) {
       try {
-        await connection.close();
+        await connection.end();
       } catch (err) {
         console.error('Error cerrando la conexión:', err);
       }
@@ -1755,19 +1808,25 @@ app.get("/paymentMethods/:userId", async (req, res) => {
   try {
     const userId = req.params.userId;
 
-    connection = await oracledb.getConnection(dbConfig);
+    // Establecer conexión con MySQL
+    connection = await mysql.createConnection(dbConfig);
 
     const query = `
       SELECT numero_tarjeta, nombre_portador, id
       FROM METODO_PAGO_USUARIO
-      WHERE id_usuario = :userId`;
-    const result = await connection.execute(query, [userId]);
+      WHERE id_usuario = ?`;
 
-    const paymentMethods = result.rows.map(row => ({ 
-      numero_tarjeta: row[0], 
-      nombre_portador: row[1],
-      id: row[2]
+    // Ejecutar la consulta con el userId
+    const [rows] = await connection.execute(query, [userId]);
+
+    // Transformar el resultado en un arreglo de objetos
+    const paymentMethods = rows.map(row => ({ 
+      numero_tarjeta: row.numero_tarjeta, 
+      nombre_portador: row.nombre_portador,
+      id: row.id
     }));
+
+    // Enviar los métodos de pago como respuesta
     res.json(paymentMethods);
     console.log(paymentMethods);
   } catch (error) {
@@ -1776,7 +1835,7 @@ app.get("/paymentMethods/:userId", async (req, res) => {
   } finally {
     if (connection) {
       try {
-        await connection.close();
+        await connection.end();
       } catch (err) {
         console.error('Error cerrando la conexión:', err);
       }
@@ -1788,18 +1847,27 @@ app.post("/checkCreditCard", async (req, res) => {
   let connection;
   try {
     const { numero_tarjeta, cvv, fecha_expiracion } = req.body;
-    console.log("Datos Ingresados: ",req.body);
-    connection = await oracledb.getConnection(dbConfig);
+    console.log("Datos Ingresados: ", req.body);
+
+    // Establecer conexión con MySQL
+    connection = await mysql.createConnection(dbConfig);
 
     const query = `
       SELECT COUNT(*) AS count
       FROM TARJETA
-      WHERE numero_tarjeta = :numero_tarjeta
-      AND cvv = :cvv
-      AND fecha_vencimiento = :fecha_expiracion`;
-    const result = await connection.execute(query, [numero_tarjeta, cvv, fecha_expiracion]);
-    console.log("Datos TARJETA: ", result.rows[0]);
-    const exists = result.rows[0] != 0;
+      WHERE numero_tarjeta = ?
+      AND cvv = ?
+      AND fecha_vencimiento = ?`;
+
+    // Ejecutar la consulta con los parámetros correspondientes
+    const [rows] = await connection.execute(query, [numero_tarjeta, cvv, fecha_expiracion]);
+    
+    console.log("Datos TARJETA: ", rows[0]);
+    
+    // Verificar si la tarjeta existe
+    const exists = rows[0].count !== 0;
+    
+    // Enviar respuesta indicando si la tarjeta existe
     res.json({ exists });
   } catch (error) {
     console.error('Error verificando la tarjeta:', error);
@@ -1807,7 +1875,7 @@ app.post("/checkCreditCard", async (req, res) => {
   } finally {
     if (connection) {
       try {
-        await connection.close();
+        await connection.end();
       } catch (err) {
         console.error('Error cerrando la conexión:', err);
       }
@@ -1818,30 +1886,42 @@ app.post("/checkCreditCard", async (req, res) => {
 app.post("/savePaymentMethod", async (req, res) => {
   const { userId, numero_tarjeta, cvv, nombre_portador, fecha_expiracion } = req.body;
   console.log(req.body);
+
+  let connection;
   try {
-    const connection = await oracledb.getConnection(dbConfig);
+    // Establecer conexión con MySQL
+    connection = await mysql.createConnection(dbConfig);
 
     // Insertar el método de pago del usuario
     const insertPaymentMethodQuery = `
       INSERT INTO METODO_PAGO_USUARIO (id_usuario, numero_tarjeta, cvv, nombre_portador, fecha_expiracion)
-      VALUES (:userId, :numero_tarjeta, :cvv, :nombre_portador, :fecha_expiracion)`;
-    await connection.execute(insertPaymentMethodQuery, {
+      VALUES (?, ?, ?, ?, ?)`;
+
+    // Ejecutar la consulta con los parámetros correspondientes
+    await connection.execute(insertPaymentMethodQuery, [
       userId,
       numero_tarjeta,
       cvv,
       nombre_portador,
       fecha_expiracion
-    });
+    ]);
 
-    // Confirmar la transacción y cerrar la conexión
+    // Confirmar la transacción
     await connection.commit();
-    await connection.close();
 
-    // Responder con un mensaje de éxito
+    // Enviar respuesta de éxito
     res.json({ success: true, message: '¡Método de pago agregado exitosamente!' });
   } catch (error) {
     console.error('Error al guardar el método de pago del usuario:', error);
     res.status(500).json({ success: false, error: 'Error al guardar el método de pago del usuario.' });
+  } finally {
+    if (connection) {
+      try {
+        await connection.end();
+      } catch (err) {
+        console.error('Error cerrando la conexión:', err);
+      }
+    }
   }
 });
 
@@ -1849,44 +1929,43 @@ app.post("/checkoutSaldo", async (req, res) => {
   let connection;
   try {
     const { userId, paymentMethodId } = req.body;
-    connection = await oracledb.getConnection(dbConfig);
+    connection = await mysql.createConnection(dbConfig);
 
     // Obtener detalles del método de pago seleccionado
     const paymentMethodQuery = `
       SELECT numero_tarjeta, cvv, fecha_expiracion
       FROM METODO_PAGO_USUARIO
-      WHERE id = :paymentMethodId`;
-    const paymentMethodResult = await connection.execute(paymentMethodQuery, [paymentMethodId]);
-    const [paymentMethodInfo] = paymentMethodResult.rows;
-    
+      WHERE id = ?`;
+    const [paymentMethodResult] = await connection.execute(paymentMethodQuery, [paymentMethodId]);
+    const [paymentMethodInfo] = paymentMethodResult;
+
     // Obtener ID del banco asociado a la tarjeta
     const cardQuery = `
       SELECT id_banco
       FROM TARJETA
-      WHERE numero_tarjeta = :numero_tarjeta
-      AND cvv = :cvv
-      AND fecha_vencimiento = :fecha_expiracion`;
-    const cardResult = await connection.execute(cardQuery, paymentMethodInfo);
-    const [cardInfo] = cardResult.rows;
-    console.log(cardResult.rows[0]);
+      WHERE numero_tarjeta = ?
+      AND cvv = ?
+      AND fecha_vencimiento = ?`;
+    const [cardResult] = await connection.execute(cardQuery, [paymentMethodInfo.numero_tarjeta, paymentMethodInfo.cvv, paymentMethodInfo.fecha_expiracion]);
+    const [cardInfo] = cardResult;
+
     // Obtener saldo asociado al banco
     const bankQuery = `
       SELECT saldo
       FROM BANCO
-      WHERE id = :id_banco`;
-    const bankResult = await connection.execute(bankQuery, cardResult.rows[0]);
-    const bankInfo = bankResult.rows[0];
-    console.log(bankResult.rows[0]);
-    // Responder con el saldo obtenido
-    res.json({ success: true, saldo: bankInfo });
+      WHERE id = ?`;
+    const [bankResult] = await connection.execute(bankQuery, [cardInfo.id_banco]);
+    const [bankInfo] = bankResult;
 
+    // Responder con el saldo obtenido
+    res.json({ success: true, saldo: bankInfo.saldo });
   } catch (error) {
     console.error('Error en el proceso de checkout:', error);
     res.status(500).json({ error: "Ocurrió un error al procesar el checkout." });
   } finally {
     if (connection) {
       try {
-        await connection.close();
+        await connection.end();
       } catch (err) {
         console.error('Error cerrando la conexión:', err);
       }
@@ -1902,138 +1981,121 @@ app.post("/saveOrder", async (req, res) => {
   const metodoEnvio2 = parseInt(metodoEnvio);
   const metodoPago2 = parseInt(metodoPago);
 
+  let connection;
   try {
-    const connection = await oracledb.getConnection(dbConfig);
+    connection = await mysql.createConnection(dbConfig);
 
     // Insertar la orden en la base de datos
     const insertOrderQuery = `
       INSERT INTO ORDEN (id_usuario, fecha_hora, id_metodo_pago, direccion_envio, metodo_envio, total_orden, estado_orden)
-      VALUES (:userId2, CURRENT_TIMESTAMP, :metodoPago2, :direccionEnvio2, :metodoEnvio2, :totalCompra2, 1)
-      RETURNING id INTO :outId`;
-    const bindVars = {
-      userId2,
-      metodoPago2,
-      direccionEnvio2,
-      metodoEnvio2,
-      totalCompra2,
-      outId: { type: oracledb.NUMBER, dir: oracledb.BIND_OUT }
-    };
-    const result = await connection.execute(insertOrderQuery, bindVars);
-    const orderId = result.outBinds.outId[0];
+      VALUES (?, CURRENT_TIMESTAMP, ?, ?, ?, ?, 1)`;
+    const [result] = await connection.execute(insertOrderQuery, [userId2, metodoPago2, direccionEnvio2, metodoEnvio2, totalCompra2]);
+    const orderId = result.insertId;
 
     // Buscar los registros en CARRITO_ITEM
     const cartQuery = `
       SELECT ci.id_item_producto, ci.cantidad 
       FROM CARRITO_ITEM ci
       JOIN ITEM_PRODUCTO ip ON ci.id_item_producto = ip.id
-      WHERE ci.id_carrito = (SELECT id FROM CARRITO WHERE id_usuario = :userId) AND ip.estado = 1`;
-    const cartItemsResult = await connection.execute(cartQuery, [userId2]);
-    const cartItems = cartItemsResult.rows;
+      WHERE ci.id_carrito = (SELECT id FROM CARRITO WHERE id_usuario = ?) AND ip.estado = 1`;
+    const [cartItems] = await connection.execute(cartQuery, [userId2]);
 
     // Insertar los registros en ORDEN_ITEM
     for (const [id_item_producto, cantidad] of cartItems) {
-      const priceQuery = `SELECT precio FROM ITEM_PRODUCTO WHERE id = :id_item_producto`;
-      const priceResult = await connection.execute(priceQuery, [id_item_producto]);
-      const precio = priceResult.rows[0][0];
+      const priceQuery = `SELECT precio FROM ITEM_PRODUCTO WHERE id = ?`;
+      const [priceResult] = await connection.execute(priceQuery, [id_item_producto]);
+      const precio = priceResult[0].precio;
 
       const insertOrderItemQuery = `
         INSERT INTO ORDEN_ITEM (id_item_producto, id_orden, cantidad, precio)
-        VALUES (:id_item_producto, :ordenId, :cantidad, :precio)`;
-      await connection.execute(insertOrderItemQuery, {
-        id_item_producto,
-        ordenId: orderId,
-        cantidad,
-        precio
-      });
+        VALUES (?, ?, ?, ?)`;
+      await connection.execute(insertOrderItemQuery, [id_item_producto, orderId, cantidad, precio]);
 
       // Actualizar cantidad_disp en ITEM_PRODUCTO y estado si es necesario
       const updateProductQuery = `
         UPDATE ITEM_PRODUCTO
-        SET cantidad_disp = cantidad_disp - :cantidad
-        WHERE id = :id_item_producto`;
-      await connection.execute(updateProductQuery, { cantidad, id_item_producto });
+        SET cantidad_disp = cantidad_disp - ?
+        WHERE id = ?`;
+      await connection.execute(updateProductQuery, [cantidad, id_item_producto]);
 
       const checkZeroQuantityQuery = `
         SELECT cantidad_disp
         FROM ITEM_PRODUCTO
-        WHERE id = :id_item_producto`;
-      const checkZeroResult = await connection.execute(checkZeroQuantityQuery, [id_item_producto]);
-      const newQuantity = checkZeroResult.rows[0][0];
+        WHERE id = ?`;
+      const [checkZeroResult] = await connection.execute(checkZeroQuantityQuery, [id_item_producto]);
+      const newQuantity = checkZeroResult[0].cantidad_disp;
 
       if (newQuantity === 0) {
         const updateProductStatusQuery = `
           UPDATE ITEM_PRODUCTO
           SET estado = 2
-          WHERE id = :id_item_producto`;
+          WHERE id = ?`;
         await connection.execute(updateProductStatusQuery, [id_item_producto]);
 
         const checkOtherActiveProductsQuery = `
-    SELECT id
-    FROM ITEM_PRODUCTO
-    WHERE id_producto = (SELECT id_producto FROM ITEM_PRODUCTO WHERE id = :id_item_producto) AND estado = 1`;
-  const checkOtherActiveResult = await connection.execute(checkOtherActiveProductsQuery, { id_item_producto });
-  if (checkOtherActiveResult.rows.length === 0) {
-    const updateProductMasterQuery = `
-      UPDATE PRODUCTO
-      SET estado = 2
-      WHERE id = (SELECT id_producto FROM ITEM_PRODUCTO WHERE id = :id_item_producto)`;
-    await connection.execute(updateProductMasterQuery, { id_item_producto });
+          SELECT id
+          FROM ITEM_PRODUCTO
+          WHERE id_producto = (SELECT id_producto FROM ITEM_PRODUCTO WHERE id = ?) AND estado = 1`;
+        const [checkOtherActiveResult] = await connection.execute(checkOtherActiveProductsQuery, [id_item_producto]);
+        if (checkOtherActiveResult.length === 0) {
+          const updateProductMasterQuery = `
+            UPDATE PRODUCTO
+            SET estado = 2
+            WHERE id = (SELECT id_producto FROM ITEM_PRODUCTO WHERE id = ?)`;
+          await connection.execute(updateProductMasterQuery, [id_item_producto]);
         }
       }
     }
 
-    
-    // Confirmar la transacción y cerrar la conexión
-    // Después de confirmar la transacción y cerrar la conexión
+    // Buscar el método de pago del usuario
+    const metodoPagoUsuarioQuery = `
+      SELECT numero_tarjeta, cvv, fecha_expiracion
+      FROM METODO_PAGO_USUARIO
+      WHERE id = ?`;
+    const [metodoPagoUsuarioResult] = await connection.execute(metodoPagoUsuarioQuery, [metodoPago2]);
+    const metodoPagoUsuario = metodoPagoUsuarioResult[0];
 
-// Buscar el método de pago del usuario
-const metodoPagoUsuarioQuery = `
-SELECT numero_tarjeta, cvv, fecha_expiracion
-FROM METODO_PAGO_USUARIO
-WHERE id = :metodoPago2`;
-const metodoPagoUsuarioResult = await connection.execute(metodoPagoUsuarioQuery, [metodoPago2]);
-const metodoPagoUsuario = metodoPagoUsuarioResult.rows[0];
+    // Buscar la tarjeta correspondiente
+    const tarjetaQuery = `
+      SELECT id, id_banco
+      FROM TARJETA
+      WHERE numero_tarjeta = ? AND cvv = ? AND fecha_vencimiento = ?`;
+    const [tarjetaResult] = await connection.execute(tarjetaQuery, [metodoPagoUsuario.numero_tarjeta, metodoPagoUsuario.cvv, metodoPagoUsuario.fecha_expiracion]);
+    const tarjetaId = tarjetaResult[0].id;
+    const idBanco = tarjetaResult[0].id_banco;
 
-// Buscar la tarjeta correspondiente
-const tarjetaQuery = `
-SELECT id, id_banco
-FROM TARJETA
-WHERE numero_tarjeta = :numeroTarjeta AND cvv = :cvv AND fecha_vencimiento = :fechaExpiracion`;
-const tarjetaResult = await connection.execute(tarjetaQuery, metodoPagoUsuario);
-const tarjetaId = tarjetaResult.rows[0][0];
-const idBanco = tarjetaResult.rows[0][1];
+    // Actualizar saldo en la tabla del banco
+    const updateBancoQuery = `
+      UPDATE BANCO
+      SET saldo = saldo - ?
+      WHERE id = ?`;
+    await connection.execute(updateBancoQuery, [totalCompra2, idBanco]);
 
-// Actualizar saldo en la tabla del banco
-const updateBancoQuery = `
-UPDATE BANCO
-SET saldo = saldo - :totalCompra2
-WHERE id = :idBanco`;
-await connection.execute(updateBancoQuery, [totalCompra2, idBanco]);
+    // Eliminar todos los elementos de la tabla CARRITO_ITEM asociados al carrito
+    const deleteCartItemsQuery = `
+      DELETE FROM CARRITO_ITEM
+      WHERE id_carrito = (SELECT id FROM CARRITO WHERE id_usuario = ?)`;
+    await connection.execute(deleteCartItemsQuery, [userId2]);
 
-// Eliminar todos los elementos de la tabla CARRITO_ITEM asociados al carrito
-const deleteCartItemsQuery = `
-  DELETE FROM CARRITO_ITEM
-  WHERE id_carrito = (SELECT id FROM CARRITO WHERE id_usuario = :userId)`;
-await connection.execute(deleteCartItemsQuery, [userId2]);
-
-
+    // Confirmar la transacción
     await connection.commit();
-    await connection.close();
-    
 
     // Responder con un mensaje de éxito
     res.json({ success: true, message: '¡Orden guardada exitosamente!' });
   } catch (error) {
+    if (connection) await connection.rollback();
     console.error('Error al guardar la orden:', error);
     res.status(500).json({ success: false, error: 'Error al guardar la orden.' });
+  } finally {
+    if (connection) await connection.close();
   }
 });
 
 app.get("/allordenes", async (req, res) => {
   try {
-    const connection = await oracledb.getConnection(dbConfig);
-    const result = await connection.execute(
-      `SELECT o.id, o.id_usuario, u.nombre || ' ' || u.apellido AS nombre_usuario, d.direccion AS direccion_envio, me.nombre AS metodo_envio, o.total_orden, eo.estado, TO_CHAR(o.fecha_hora, 'YYYY-MM-DD HH24:MI') AS fecha_hora
+    const connection = await mysql.createConnection(dbConfig);
+    const [result] = await connection.execute(
+      `SELECT o.id, o.id_usuario, CONCAT(u.nombre, ' ', u.apellido) AS nombre_usuario, d.direccion AS direccion_envio, me.nombre AS metodo_envio, o.total_orden, eo.estado, DATE_FORMAT(o.fecha_hora, '%Y-%m-%d %H:%i') AS fecha_hora
        FROM ORDEN o
        INNER JOIN USUARIO u ON o.id_usuario = u.id
        INNER JOIN DIRECCION d ON o.direccion_envio = d.id
@@ -2042,15 +2104,15 @@ app.get("/allordenes", async (req, res) => {
        ORDER BY o.fecha_hora DESC`
     );
     await connection.close();
-    res.json(result.rows.map(row => ({
-      id: row[0],
-      id_usuario: row[1],
-      nombre_usuario: row[2],
-      direccion_envio: row[3],
-      metodo_envio: row[4],
-      total_orden: row[5],
-      estado_orden: row[6],
-      fecha_hora: row[7]
+    res.json(result.map(row => ({
+      id: row.id,
+      id_usuario: row.id_usuario,
+      nombre_usuario: row.nombre_usuario,
+      direccion_envio: row.direccion_envio,
+      metodo_envio: row.metodo_envio,
+      total_orden: row.total_orden,
+      estado_orden: row.estado,
+      fecha_hora: row.fecha_hora
     })));
   } catch (error) {
     console.error('Error fetching ordenes:', error);
@@ -2062,14 +2124,14 @@ app.get("/allordenes", async (req, res) => {
 
 app.get("/estadoordenes", async (req, res) => {
   try {
-    const connection = await oracledb.getConnection(dbConfig);
-    const result = await connection.execute(
+    const connection = await mysql.createConnection(dbConfig);
+    const [result] = await connection.execute(
       `SELECT id, estado FROM ESTADO_ORDEN`
     );
     await connection.close();
-    res.json(result.rows.map(row => ({
-      id: row[0],
-      estado: row[1]
+    res.json(result.map(row => ({
+      id: row.id,
+      estado: row.estado
     })));
   } catch (error) {
     console.error('Error fetching estado ordenes:', error);
@@ -2082,18 +2144,30 @@ app.put("/modifyorder/:id", async (req, res) => {
   const { estado } = req.body;
 
   try {
-    const connection = await oracledb.getConnection(dbConfig);
-    const result = await connection.execute(
-      `UPDATE ORDEN SET estado_orden = (
-        SELECT id FROM ESTADO_ORDEN WHERE estado = :estado
-      ) WHERE id = :orderId`,
-      {
-        estado,
-        orderId
-      },
-      { autoCommit: true }
+    const connection = await mysql.createConnection(dbConfig);
+
+    const [estadoResult] = await connection.execute(
+      `SELECT id FROM ESTADO_ORDEN WHERE estado = ?`,
+      [estado]
     );
-    await connection.close();
+
+    if (estadoResult.length === 0) {
+      return res.status(400).send("Estado de orden no válido.");
+    }
+
+    const estadoId = estadoResult[0].id;
+
+    const [result] = await connection.execute(
+      `UPDATE ORDEN SET estado_orden = ? WHERE id = ?`,
+      [estadoId, orderId]
+    );
+
+    await connection.end();
+    
+    if (result.affectedRows === 0) {
+      return res.status(404).send("Orden no encontrada.");
+    }
+
     res.status(200).send("Orden modificada exitosamente.");
   } catch (error) {
     console.error('Error modificando orden:', error);
@@ -2106,19 +2180,19 @@ app.post('/loginAdmin', async (req, res) => {
     const { correo, contraseña } = req.body;
 
     // Verificar si el usuario existe y la contraseña es correcta
-    const connection = await oracledb.getConnection(dbConfig);
-    const resultUsuario = await connection.execute(
-      "SELECT id, id_tipo FROM USUARIO WHERE correo = :correo AND contraseña = :contraseña",
+    const connection = await mysql.createConnection(dbConfig);
+    const [resultUsuario] = await connection.execute(
+      "SELECT id, id_tipo FROM USUARIO WHERE correo = ? AND contraseña = ?",
       [correo, contraseña]
     );
-    await connection.close();
+    await connection.end();
 
-    if (resultUsuario.rows.length === 0) {
+    if (resultUsuario.length === 0) {
       return res.status(401).json({ success: false, errors: "Correo o contraseña incorrectos." });
     }
-    
-    const userId = resultUsuario.rows[0][0];
-    const userType = resultUsuario.rows[0][1];
+
+    const userId = resultUsuario[0].id;
+    const userType = resultUsuario[0].id_tipo;
 
     if (userType !== 1) {
       return res.status(403).json({ success: false, errors: "Usuario no autorizado para acceder a la página de administración." });
@@ -2137,18 +2211,18 @@ app.post('/obtenerPrecio', async (req, res) => {
     const { productId } = req.body;
 
     // Realizar consulta para obtener el precio del producto
-    const connection = await oracledb.getConnection(dbConfig);
-    const resultPrecio = await connection.execute(
-      "SELECT precio FROM ITEM_PRODUCTO WHERE id_producto = :productId",
+    const connection = await mysql.createConnection(dbConfig);
+    const [resultPrecio] = await connection.execute(
+      "SELECT precio FROM ITEM_PRODUCTO WHERE id_producto = ?",
       [productId]
     );
-    await connection.close();
+    await connection.end();
 
-    if (resultPrecio.rows.length === 0) {
+    if (resultPrecio.length === 0) {
       return res.status(404).json({ success: false, errors: "No se encontró el precio para el producto especificado." });
     }
 
-    const precio = resultPrecio.rows[0][0];
+    const precio = resultPrecio[0].precio;
 
     // Enviar el precio al frontend
     res.status(200).json({ success: true, precio });
