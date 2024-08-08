@@ -4,7 +4,7 @@ const app = express();
 const jwt = require("jsonwebtoken");
 const multer = require("multer");
 const cors = require("cors");
-const oracledb = require('oracledb');
+const mysql = require('mysql2/promise');
 
 
 
@@ -19,18 +19,20 @@ app.use(express.json());
 
 
 const dbConfig = {
-  user: 'C##Final',
-  password: '12345',
-  connectString: 'localhost:1521/xe'
+  host: 'localhost',
+  user: 'tu_usuario',  
+  password: 'tu_contraseña',  
+  database: 'tu_base_de_datos'  
 };
 
 async function initialize() {
   try {
-    await oracledb.createPool(dbConfig);
-    console.log('Connected to Oracle Express');
+    const connection = await mysql.createConnection(dbConfig); // Crear conexión MySQL
+    console.log('Connected to MySQL');
+    await connection.end(); // Cerrar conexión
   } catch (err) {
-    console.error('Error connecting to Oracle Express:', err.message);
-    process.exit(1);
+    console.error('Error connecting to MySQL:', err.message);
+    process.exit(1); // Salir si hay un error
   }
 }
 
