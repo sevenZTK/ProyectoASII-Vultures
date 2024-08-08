@@ -645,589 +645,414 @@ async function handleItemAndConfigInsertion(productId, req, res, connection) {
   
   
 
+  //parte de Steven 
+  //es con mssql configuracion de la bd a dbConfig
+
   app.get("/parentcategories", async (req, res) => {
     try {
-      const connection = await oracledb.getConnection(dbConfig);
-      const result = await connection.execute(
+      const pool = await sql.connect(dbConfig);
+      const result = await pool.request().query(
         `SELECT id, nombre_categoria FROM CATEGORIA_PRODUCTO`
       );
-      await connection.close();
-      res.json(result.rows.map(row => ({
-        id: row[0],
-        nombre_categoria: row[1]
+      res.json(result.recordset.map(row => ({
+        id: row.id,
+        nombre_categoria: row.nombre_categoria
       })));
     } catch (error) {
       console.error('Error fetching parent categories:', error);
       res.status(500).json([]);
+    } finally {
+      sql.close();
+    }
+  });
+
+  app.get("/itemproducts", async (req, res) => {
+    try {
+      const productId = req.query.id_producto;
+      const pool = await sql.connect(dbConfig);
+      const result = await pool.request()
+        .input('productId', sql.Int, productId)
+        .query(
+          `SELECT id, cantidad_disp, precio, estado FROM ITEM_PRODUCTO WHERE id_producto = @productId`
+        );
+      res.json(result.recordset.map(row => ({
+        id: row.id,
+        cantidad_disp: row.cantidad_disp,
+        precio: row.precio,
+        estado: row.estado
+      })));
+    } catch (error) {
+      console.error('Error fetching item products:', error);
+      res.status(500).json([]);
+    } finally {
+      sql.close();
+    }
+  });
+
+  app.get("/searchproduct", async (req, res) => {
+    let connection;
+    try {
+      const searchTerm = req.query.search ? `%${req.query.search.toLowerCase()}%` : "%";
+      connection = await mysql.createConnection(dbConfig);
+      const [rows] = await connection.execute(
+        `SELECT p.id, p.nombre_producto, p.descripcion_producto, p.imagen_producto1, c.nombre_categoria
+         FROM PRODUCTO p
+         INNER JOIN CATEGORIA_PRODUCTO c ON p.id_categoria = c.id
+         WHERE LOWER(p.nombre_producto) LIKE ? AND p.estado = 1`, 
+        [searchTerm]
+      );
+      res.json(rows.map(row => ({
+        id: row.id,
+        nombre_producto: row.nombre_producto,
+        descripcion_producto: row.descripcion_producto,
+        imagen_producto1: row.imagen_producto1,
+        nombre_categoria: row.nombre_categoria
+      })));
+    } catch (error) {
+      console.error('Error searching products:', error);
+      res.status(500).json({ error: "Error searching products" });
+    } finally {
+      if (connection) {
+        await connection.end();
+      }
     }
   });
   
-  // Obtener los detalles del producto desde la tabla ITEM_PRODUCTO basándose en el id_producto
-app.get("/itemproducts", async (req, res) => {
-  try {
-    const productId = req.query.id_producto;
-    const connection = await oracledb.getConnection(dbConfig);
-    const result = await connection.execute(
-      `SELECT id, cantidad_disp, precio, estado FROM ITEM_PRODUCTO WHERE id_producto = :productId`, [productId]
-    );
-    await connection.close();
-    res.json(result.rows.map(row => ({
-      id: row[0],
-      cantidad_disp: row[1],
-      precio: row[2],
-      estado: row[3]
-    })));
-  } catch (error) {
-    console.error('Error fetching item products:', error);
-    res.status(500).json([]);
-  }
-});
-
-
-
-app.get("/searchproduct", async (req, res) => {
-  let connection; // Declare connection variable outside try block
-  try {
-    const searchTerm = req.query.search ? req.query.search.toLowerCase() : ""; // Convertir a minúsculas y manejar el caso en el que no se proporciona ningún término de búsqueda
-    connection = await oracledb.getConnection(dbConfig);
-    
-    // Ejecutar la consulta para buscar productos que contengan el término de búsqueda en el nombre del producto
-    const result = await connection.execute(
-      `SELECT p.id, p.nombre_producto, p.descripcion_producto, p.imagen_producto1, c.nombre_categoria
-       FROM PRODUCTO p
-       INNER JOIN CATEGORIA_PRODUCTO c ON p.id_categoria = c.id
-       WHERE LOWER(p.nombre_producto) LIKE '%' || :searchTerm || '%' AND p.estado = 1`,
-      { searchTerm }
-    );
-
-    // Enviar los productos que coinciden con la búsqueda como respuesta
-    res.json(result.rows.map(row => ({
-      id: row[0],
-      nombre_producto: row[1],
-      descripcion_producto: row[2],
-      imagen_producto1: row[3],
-      nombre_categoria: row[4]
-    })));
-  } catch (error) {
-    console.error('Error searching products:', error);
-    res.status(500).json({ error: "Error searching products" });
-  } finally {
-    if (connection) {
-      try {
-        await connection.close();
-      } catch (err) {
-        console.error('Error closing connection:', err);
+  app.get("/productos", async (req, res) => {
+    let connection;
+    try {
+      const searchTerm = req.query.search ? `%${req.query.search.toLowerCase()}%` : "%";
+      connection = await mysql.createConnection(dbConfig);
+      const [rows] = await connection.execute(
+        `SELECT p.id, p.nombre_producto, p.descripcion_producto, p.imagen_producto1, c.nombre_categoria
+         FROM PRODUCTO p
+         INNER JOIN CATEGORIA_PRODUCTO c ON p.id_categoria = c.id
+         WHERE LOWER(p.nombre_producto) LIKE ? AND p.estado = 1`, 
+        [searchTerm]
+      );
+      res.json(rows.map(row => ({
+        id: row.id,
+        nombre_producto: row.nombre_producto,
+        descripcion_producto: row.descripcion_producto,
+        imagen_producto1: row.imagen_producto1,
+        nombre_categoria: row.nombre_categoria
+      })));
+    } catch (error) {
+      console.error('Error searching products:', error);
+      res.status(500).json({ error: "Error searching products" });
+    } finally {
+      if (connection) {
+        await connection.end();
       }
     }
-  }
-});
+  });
 
-
-app.get("/productos", async (req, res) => {
-  let connection; // Declarar variable de conexión fuera del bloque try
-  try {
-    const searchTerm = req.query.search ? req.query.search.toLowerCase() : ""; // Convertir a minúsculas y manejar el caso en el que no se proporciona ningún término de búsqueda
-    connection = await oracledb.getConnection(dbConfig);
-    
-    // Ejecutar la consulta para buscar productos que contengan el término de búsqueda en el nombre del producto
-    const result = await connection.execute(
-      `SELECT p.id, p.nombre_producto, p.descripcion_producto, p.imagen_producto1, c.nombre_categoria
-       FROM PRODUCTO p
-       INNER JOIN CATEGORIA_PRODUCTO c ON p.id_categoria = c.id
-       WHERE LOWER(p.nombre_producto) LIKE '%' || :searchTerm || '%' AND p.estado = 1`,
-      { searchTerm }
-    );
-
-    // Enviar los productos que coinciden con la búsqueda como respuesta
-    res.json(result.rows.map(row => ({
-      id: row[0],
-      nombre_producto: row[1],
-      descripcion_producto: row[2],
-      imagen_producto1: row[3],
-      nombre_categoria: row[4]
-    })));
-  } catch (error) {
-    console.error('Error searching products:', error);
-    res.status(500).json({ error: "Error searching products" });
-  } finally {
-    if (connection) {
-      try {
-        await connection.close();
-      } catch (err) {
-        console.error('Error closing connection:', err);
+  app.get("/itemproducts/:productId", async (req, res) => {
+    let pool;
+    try {
+      const productId = req.params.productId;
+      pool = await sql.connect(dbConfig);
+      const result = await pool.request()
+        .input('productId', sql.Int, productId)
+        .query(
+          `SELECT id, cantidad_disp, precio, estado
+           FROM ITEM_PRODUCTO
+           WHERE id_producto = @productId`
+        );
+      res.json(result.recordset.map(row => ({
+        id: row.id,
+        cantidad_disp: row.cantidad_disp,
+        precio: row.precio,
+        estado: row.estado
+      })));
+    } catch (error) {
+      console.error('Error fetching item products:', error);
+      res.status(500).json({ error: "Error al obtener los ITEM_PRODUCTO" });
+    } finally {
+      if (pool) {
+        pool.close();
       }
     }
-  }
-});
+  });
 
-app.get("/itemproducts/:productId", async (req, res) => {
-  let connection;
+  app.get("/itemproducttitles/:productId", async (req, res) => {
+    let pool;
+    try {
+      const productId = req.params.productId;
+      pool = await sql.connect(dbConfig);
+      const result = await pool.request()
+        .input('productId', sql.Int, productId)
+        .query(
+          `SELECT op.valor
+           FROM CONFIGURACION_PRODUCTO cp
+           INNER JOIN OPCION_VARIACION op ON cp.id_opcion_variacion = op.id
+           WHERE cp.id_item_producto IN (
+             SELECT id
+             FROM ITEM_PRODUCTO
+             WHERE id_producto = @productId
+           )`
+        );
+      const titles = result.recordset.map(row => row.valor);
+      res.json({ titles });
+    } catch (error) {
+      console.error('Error fetching item product titles:', error);
+      res.status(500).json({ error: "Error al obtener los títulos de los ITEM_PRODUCTO" });
+    } finally {
+      if (pool) {
+        pool.close();
+      }
+    }
+  });
+
   
-  try {
-    const productId = req.params.productId;
-
-    // Establece la conexión con la base de datos
-    connection = await oracledb.getConnection(dbConfig);
-
-    // Ejecuta la consulta para obtener los ITEM_PRODUCTO asociados al producto seleccionado
-    const result = await connection.execute(
-      `SELECT id, cantidad_disp, precio, estado
-       FROM ITEM_PRODUCTO
-       WHERE id_producto = :productId`,
-      [productId]
-    );
-
-    // Envia los ITEM_PRODUCTO como respuesta
-    res.json(result.rows.map(row => ({
-      id: row[0],
-      cantidad_disp: row[1],
-      precio: row[2],
-      estado: row[3]
-    })));
-  } catch (error) {
-    console.error('Error fetching item products:', error);
-    res.status(500).json({ error: "Error al obtener los ITEM_PRODUCTO" });
-  } finally {
-    // Cierra la conexión
-    if (connection) {
-      try {
-        await connection.close();
-      } catch (error) {
-        console.error(error);
+  app.post('/updateitemproduct', async (req, res) => {
+    let pool;
+    try {
+      console.log("Request received:", req.body);
+      const { id, cantidad_disp, precio, estado } = req.body;
+      pool = await sql.connect(dbConfig);
+      const query = `
+        BEGIN TRANSACTION;
+        UPDATE ITEM_PRODUCTO
+        SET cantidad_disp = @cantidad_disp, precio = @precio, estado = @estado
+        WHERE id = @id;
+        COMMIT TRANSACTION;
+      `;
+      await pool.request()
+        .input('id', sql.Int, id)
+        .input('cantidad_disp', sql.Int, cantidad_disp)
+        .input('precio', sql.Decimal(10, 2), precio)
+        .input('estado', sql.Int, estado)
+        .query(query);
+      console.log("Item updated successfully");
+      res.json({ success: true, message: '¡Item actualizado exitosamente!' });
+    } catch (error) {
+      console.error('Error al actualizar el item:', error);
+      res.status(500).json({ success: false, error: 'Error al actualizar el item' });
+    } finally {
+      if (pool) {
+        pool.close();
       }
     }
-  }
-});
+  });
 
-app.get("/itemproducttitles/:productId", async (req, res) => {
-  let connection;
+  
+  app.get("/parentcategoriesNav", async (req, res) => {
+    try {
+      const pool = await sql.connect(dbConfig);
+      const result = await pool.request().query(
+        `SELECT id, nombre_categoria FROM CATEGORIA_PRODUCTO WHERE id_categoria_padre IS NULL`
+      );
+      res.json(result.recordset.map(row => ({
+        id: row.id,
+        nombre_categoria: row.nombre_categoria
+      })));
+    } catch (error) {
+      console.error('Error fetching parent categories:', error);
+      res.status(500).json([]);
+    } finally {
+      sql.close();
+    }
+  });
+  
 
-  try {
-    const productId = req.params.productId;
+  app.get("/SubCategories/:categoryId", async (req, res) => {
+    const { categoryId } = req.params;
+    try {
+      const pool = await sql.connect(dbConfig);
+      const result = await pool.request()
+        .input('categoryId', sql.Int, categoryId)
+        .query(
+          `SELECT id, nombre_categoria FROM CATEGORIA_PRODUCTO WHERE id_categoria_padre = @categoryId`
+        );
+      res.json(result.recordset.map(row => ({
+        id: row.id,
+        nombre_categoria: row.nombre_categoria
+      })));
+    } catch (error) {
+      console.error('Error fetching subcategories:', error);
+      res.status(500).json([]);
+    } finally {
+      sql.close();
+    }
+  });
 
-    // Establece la conexión con la base de datos
-    connection = await oracledb.getConnection(dbConfig);
-
-    // Consulta para obtener los títulos de los ITEM_PRODUCTO
-    const query = `
-      SELECT op.valor
-      FROM CONFIGURACION_PRODUCTO cp
-      INNER JOIN OPCION_VARIACION op ON cp.id_opcion_variacion = op.id
-      WHERE cp.id_item_producto IN (
-        SELECT id
-        FROM ITEM_PRODUCTO
-        WHERE id_producto = :productId
-      )
-    `;
-    const result = await connection.execute(query, [productId]);
-
-    // Construye un array de títulos
-    const titles = result.rows.map(row => row[0]);
-
-    res.json({ titles });
-  } catch (error) {
-    console.error('Error fetching item product titles:', error);
-    res.status(500).json({ error: "Error al obtener los títulos de los ITEM_PRODUCTO" });
-  } finally {
-    // Cierra la conexión
-    if (connection) {
-      try {
-        await connection.close();
-      } catch (error) {
-        console.error(error);
+  app.get('/productos-recientes', async (req, res) => {
+    let pool;
+    try {
+      pool = await sql.connect(dbConfig);
+      const productosResult = await pool.request().query(
+        `SELECT TOP 8 p.id, 
+                p.nombre_producto, 
+                p.descripcion_producto, 
+                p.imagen_producto1, 
+                c.nombre_categoria
+          FROM PRODUCTO p
+          INNER JOIN CATEGORIA_PRODUCTO c ON p.id_categoria = c.id
+          WHERE p.estado = 1
+          ORDER BY p.id DESC`
+      );
+      const idsProductos = productosResult.recordset.map(row => row.id);
+      const preciosResult = await pool.request().query(
+        `SELECT id_producto, precio
+          FROM ITEM_PRODUCTO
+          WHERE id_producto IN (${idsProductos.join(",")})`
+      );
+      const preciosPorId = {};
+      for (const row of preciosResult.recordset) {
+        preciosPorId[row.id_producto] = row.precio;
+      }
+      const productosConPrecios = productosResult.recordset.map(row => ({
+        id: row.id,
+        nombre_producto: row.nombre_producto,
+        descripcion_producto: row.descripcion_producto,
+        imagen_producto1: row.imagen_producto1,
+        nombre_categoria: row.nombre_categoria,
+        precio: preciosPorId[row.id] || null
+      }));
+      res.json(productosConPrecios);
+    } catch (error) {
+      console.error('Error al obtener productos recientes:', error);
+      res.status(500).json({ error: 'Error al obtener productos recientes' });
+    } finally {
+      if (pool) {
+        pool.close();
       }
     }
-  }
-});
+  });
 
-app.post('/updateitemproduct', async (req, res) => {
-  let connection;
-  try {
-    console.log("Request received:", req.body); // Log the request body
-    const { id, cantidad_disp, precio, estado } = req.body;
-
-    // Establish connection with the database
-    connection = await oracledb.getConnection(dbConfig);
-
-    // Begin transaction and execute SQL queries within it
-    const query = `
-      DECLARE
-        PRAGMA AUTONOMOUS_TRANSACTION;
-      BEGIN
-        -- Update records in ITEM_PRODUCTO
-        UPDATE ITEM_PRODUCTO SET cantidad_disp = :cantidad_disp, precio = TO_NUMBER(:precio, '9999999999.99', 'NLS_NUMERIC_CHARACTERS = ''.,'''), estado = :estado WHERE id = :id;
-        -- Commit the transaction
-        COMMIT;
-      END;
-    `;
-    const binds = { id, cantidad_disp, precio, estado };
-    await connection.execute(query, binds, { autoCommit: true });
-
-    // Send success response
-    console.log("Item updated successfully");
-    res.json({ success: true, message: '¡Item actualizado exitosamente!' });
-  } catch (error) {
-    // Log and send error response
-    console.error('Error al actualizar el item:', error);
-    res.status(500).json({ success: false, error: 'Error al actualizar el item' });
-  } finally {
-    // Close the database connection
-    if (connection) {
-      try {
-        await connection.close();
-      } catch (closeError) {
-        console.error('Error al cerrar la conexión:', closeError);
+  
+  app.get("/firstOption/:idProducto", async (req, res) => {
+    let pool;
+    try {
+      const idProducto = req.params.idProducto;
+      pool = await sql.connect(dbConfig);
+      const result = await pool.request()
+        .input('idProducto', sql.Int, idProducto)
+        .query(
+          `SELECT DISTINCT opv2.valor
+           FROM CONFIGURACION_PRODUCTO cp
+           INNER JOIN OPCION_VARIACION opv2 ON cp.id_opcion_variacion2 = opv2.id
+           WHERE cp.id_item_producto IN (
+             SELECT id
+             FROM ITEM_PRODUCTO
+             WHERE id_producto = @idProducto
+           )`
+        );
+      const firstOptions = result.recordset.map(row => row.valor);
+      res.json({ firstOptions });
+    } catch (error) {
+      console.error('Error fetching first options:', error);
+      res.status(500).json({ error: "Error fetching first options" });
+    } finally {
+      if (pool) {
+        pool.close();
       }
     }
-  }
-});
+  });
 
-app.get("/parentcategoriesNav", async (req, res) => {
-  try {
-    const connection = await oracledb.getConnection(dbConfig);
-    const result = await connection.execute(
-      `SELECT id, nombre_categoria FROM CATEGORIA_PRODUCTO WHERE id_categoria_padre IS NULL`
-    );
-    await connection.close();
-    res.json(result.rows.map(row => ({
-      id: row[0],
-      nombre_categoria: row[1]
-    })));
-  } catch (error) {
-    console.error('Error fetching parent categories:', error);
-    res.status(500).json([]);
-  }
-});
-
-app.get("/SubCategories/:categoryId", async (req, res) => {
-  const { categoryId } = req.params;
-  try {
-    const connection = await oracledb.getConnection(dbConfig);
-    const result = await connection.execute(
-      `SELECT id, nombre_categoria FROM CATEGORIA_PRODUCTO WHERE id_categoria_padre = :categoryId`,
-      [categoryId]
-    );
-    await connection.close();
-    res.json(result.rows.map(row => ({
-      id: row[0],
-      nombre_categoria: row[1]
-    })));
-  } catch (error) {
-    console.error('Error fetching subcategories:', error);
-    res.status(500).json([]);
-  }
-});
-
-app.get('/productos-recientes', async (req, res) => {
-  let connection;
-
-  try {
-    // Establece la conexión con la base de datos
-    connection = await oracledb.getConnection(dbConfig);
-
-    // Ejecuta la consulta para obtener los productos más recientes
-    const productosResult = await connection.execute(
-      `SELECT p.id, 
-              p.nombre_producto, 
-              p.descripcion_producto, 
-              p.imagen_producto1, 
-              c.nombre_categoria
-        FROM PRODUCTO p
-        INNER JOIN CATEGORIA_PRODUCTO c ON p.id_categoria = c.id
-        WHERE p.estado = 1
-        ORDER BY p.id DESC
-        FETCH NEXT 8 ROWS ONLY`
-    );
-
-    // Extraer los ids de los productos de la primera consulta
-    const idsProductos = productosResult.rows.map(row => row[0]);
-
-    // Consulta para obtener los precios de los productos
-    const preciosResult = await connection.execute(
-      `SELECT id_producto, precio
-        FROM ITEM_PRODUCTO
-        WHERE id_producto IN (${idsProductos.map(id => "'" + id + "'").join(",")})`
-    );
-
-    // Mapear los precios a un objeto para facilitar la búsqueda
-    const preciosPorId = {};
-    for (const row of preciosResult.rows) {
-      preciosPorId[row[0]] = row[1];
-    }
-
-    // Enviar los productos con sus precios correspondientes
-    const productosConPrecios = productosResult.rows.map(row => ({
-      id: row[0],
-      nombre_producto: row[1],
-      descripcion_producto: row[2],
-      imagen_producto1: row[3],
-      nombre_categoria: row[4],
-      precio: preciosPorId[row[0]] // Obtener el precio del objeto de precios utilizando el id del producto como clave
-    }));
-
-    // Envia los productos como respuesta
-    res.json(productosConPrecios);
-
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Error al obtener los productos más recientes" });
-  } finally {
-    // Cierra la conexión
-    if (connection) {
-      try {
-        await connection.close();
-      } catch (error) {
-        console.error(error);
+  app.get("/secondOption/:idOpcionVariacion/:productId", async (req, res) => {
+    let pool;
+    try {
+      const { idOpcionVariacion, productId } = req.params;
+      pool = await sql.connect(dbConfig);
+      const result = await pool.request()
+        .input('idOpcionVariacion', sql.Int, idOpcionVariacion)
+        .input('productId', sql.Int, productId)
+        .query(
+          `SELECT DISTINCT opv.valor
+           FROM CONFIGURACION_PRODUCTO cp
+           INNER JOIN OPCION_VARIACION opv ON cp.id_opcion_variacion1 = opv.id
+           WHERE cp.id_opcion_variacion2 = @idOpcionVariacion
+           AND cp.id_item_producto IN (
+             SELECT id
+             FROM ITEM_PRODUCTO
+             WHERE id_producto = @productId
+           )`
+        );
+      const secondOptions = result.recordset.map(row => row.valor);
+      res.json({ secondOptions });
+    } catch (error) {
+      console.error('Error fetching second options:', error);
+      res.status(500).json({ error: "Error fetching second options" });
+    } finally {
+      if (pool) {
+        pool.close();
       }
     }
-  }
-});
+  });
 
-
-app.get("/firstOption/:idProducto", async (req, res) => {
-  let connection;
-
-  try {
-    connection = await oracledb.getConnection(dbConfig);
-
-    const result = await connection.execute(
-      `SELECT ov.id, ov.valor, v.nombre AS variationType
-       FROM CONFIGURACION_PRODUCTO cp
-       INNER JOIN OPCION_VARIACION ov ON cp.id_opcion_variacion = ov.id
-       INNER JOIN VARIACION v ON ov.id_variacion = v.id
-       WHERE cp.id_item_producto IN (
-         SELECT id
-         FROM ITEM_PRODUCTO
-         WHERE id_producto = :idProducto
-       )
-       ORDER BY ov.id_variacion`,
-      [req.params.idProducto]
-    );
-
-    const options = result.rows.map(row => ({
-      id: row[0],
-      value: row[1],
-      variationType: row[2]
-    }));
-    
-    // Agrupar opciones por tipo de variación
-    const groupedOptions = options.reduce((acc, option) => {
-      if (!acc[option.variationType]) {
-        acc[option.variationType] = [];
+  
+  app.get("/checkAvailability/:idProducto/:idOpcionVariacion2/:idOpcionVariacion1", async (req, res) => {
+    let pool;
+    try {
+      const { idProducto, idOpcionVariacion2, idOpcionVariacion1 } = req.params;
+      pool = await sql.connect(dbConfig);
+      const result = await pool.request()
+        .input('idProducto', sql.Int, idProducto)
+        .input('idOpcionVariacion2', sql.Int, idOpcionVariacion2)
+        .input('idOpcionVariacion1', sql.Int, idOpcionVariacion1)
+        .query(
+          `SELECT cp.id_item_producto, ip.cantidad_disp
+           FROM CONFIGURACION_PRODUCTO cp
+           INNER JOIN ITEM_PRODUCTO ip ON cp.id_item_producto = ip.id
+           WHERE ip.id_producto = @idProducto
+           AND cp.id_opcion_variacion2 = @idOpcionVariacion2
+           AND cp.id_opcion_variacion1 = @idOpcionVariacion1`
+        );
+      if (result.recordset.length > 0) {
+        res.json({ available: true, cantidad_disp: result.recordset[0].cantidad_disp });
+      } else {
+        res.json({ available: false, cantidad_disp: 0 });
       }
-      
-      // Verificar si la opción ya existe en el grupo
-      const exists = acc[option.variationType].some(opt => opt.value === option.value);
-      if (!exists) {
-        acc[option.variationType].push(option);
-      }
-      
-      return acc;
-    }, {});
-
-    // Extraer las claves (nombres de los tipos de variación)
-    const variationTypes = Object.keys(groupedOptions);
-    console.log("Tipos de Variacion:", variationTypes);
-    // Crear objetos para almacenar las opciones de variación agrupadas por tipo
-    let variationOptions1 = [];
-    let variationOptions2 = [];
-
-    // Iterar sobre cada tipo de variación
-    variationTypes.forEach((variationType, index) => {
-      // Obtener las opciones de variación correspondientes a este tipo
-      const options = groupedOptions[variationType];
-
-      // Asignar las opciones al primer grupo
-      if (index === 0) {
-        variationOptions1 = options;
-      }
-    });
-
-    // Enviar las opciones agrupadas por tipo como parte de la respuesta JSON
-    res.json({ variationOptions1, variationTypes });
-    
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Error fetching options" });
-  } finally {
-    if (connection) {
-      try {
-        await connection.close();
-      } catch (error) {
-        console.error(error);
+    } catch (error) {
+      console.error('Error checking availability:', error);
+      res.status(500).json({ error: "Error checking availability" });
+    } finally {
+      if (pool) {
+        pool.close();
       }
     }
-  }
-});
+  });
 
-app.get("/secondOption/:idOpcionVariacion/:productId", async (req, res) => {
-  let connection;
-
-  try {
-    connection = await oracledb.getConnection(dbConfig);
-
-    const productId = parseInt(req.params.productId);
-    const idOpcionVariacion = parseInt(req.params.idOpcionVariacion);
-
-    // Obtener las opciones de variación correspondientes al producto seleccionado
-    const firstOptionResult = await connection.execute(
-      `SELECT cp.id_opcion_variacion
-       FROM CONFIGURACION_PRODUCTO cp
-       INNER JOIN ITEM_PRODUCTO ip ON cp.id_item_producto = ip.id
-       WHERE ip.id_producto = :productId`,
-      [productId]
-    );
-
-    // Obtener los IDs de las opciones de variación
-    const usedVariationIds = firstOptionResult.rows.map(row => row[0]);
-
-    // Filtrar las opciones de variación para excluir la opción seleccionada en el primer option list
-    const filteredVariationIds = usedVariationIds.filter(id => id !== idOpcionVariacion);
-
-    // Obtener las opciones de variación correspondientes a los IDs filtrados
-    const result = await connection.execute(
-      `SELECT ov.id, ov.valor, v.nombre AS variationType
-       FROM OPCION_VARIACION ov
-       INNER JOIN VARIACION v ON ov.id_variacion = v.id
-       WHERE ov.id IN (${filteredVariationIds.join(',')})`, // Utilizar una lista de valores en lugar de una matriz
-    );
-
-    const options = result.rows.map(row => ({
-      id: row[0],
-      value: row[1],
-      variationType: row[2]
-    }));
-
-    // Agrupar opciones por tipo de variación
-    const groupedOptions = options.reduce((acc, option) => {
-      if (!acc[option.variationType]) {
-        acc[option.variationType] = [];
-      }
-
-      // Verificar si la opción ya existe en el grupo
-      const exists = acc[option.variationType].some(opt => opt.value === option.value);
-      if (!exists) {
-        acc[option.variationType].push(option);
-      }
-
-      return acc;
-    }, {});
-
-    // Extraer las claves (nombres de los tipos de variación)
-    const variationTypes = Object.keys(groupedOptions);
-
-    // Crear objetos para almacenar las opciones de variación agrupadas por tipo
-    let variationOptions2 = [];
-
-    // Iterar sobre cada tipo de variación
-    variationTypes.forEach(variationType => {
-      // Obtener las opciones de variación correspondientes a este tipo
-      const options = groupedOptions[variationType];
-
-      // Asignar las opciones al segundo grupo
-      variationOptions2 = options;
-    });
-
-    // Enviar las opciones agrupadas por tipo como parte de la respuesta JSON
-    res.json({ variationOptions2 });
-
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Error fetching options" });
-  } finally {
-    if (connection) {
-      try {
-        await connection.close();
-      } catch (error) {
-        console.error(error);
+  
+  app.get('/cart/:userId', async (req, res) => {
+    let pool;
+    try {
+      const userId = req.params.userId;
+      pool = await sql.connect(dbConfig);
+      const cartResult = await pool.request()
+        .input('userId', sql.Int, userId)
+        .query(
+          `SELECT c.id_producto, c.cantidad, p.nombre_producto, p.descripcion_producto, p.imagen_producto1, ip.precio
+           FROM CARRITO c
+           INNER JOIN PRODUCTO p ON c.id_producto = p.id
+           INNER JOIN ITEM_PRODUCTO ip ON p.id = ip.id_producto
+           WHERE c.id_usuario = @userId`
+        );
+      const cartItems = cartResult.recordset.map(row => ({
+        id_producto: row.id_producto,
+        cantidad: row.cantidad,
+        nombre_producto: row.nombre_producto,
+        descripcion_producto: row.descripcion_producto,
+        imagen_producto1: row.imagen_producto1,
+        precio: row.precio
+      }));
+      res.json(cartItems);
+    } catch (error) {
+      console.error('Error fetching cart items:', error);
+      res.status(500).json({ error: "Error fetching cart items" });
+    } finally {
+      if (pool) {
+        pool.close();
       }
     }
-  }
-});
+  });
+  
 
 
-
-app.get("/checkAvailability/:idProducto/:idOpcionVariacion2/:idOpcionVariacion1", async (req, res) => {
-  let connection;
-
-  try {
-    connection = await oracledb.getConnection(dbConfig);
-
-    const idProducto = req.params.idProducto;
-    const idOpcionVariacion1 = req.params.idOpcionVariacion1;
-    const idOpcionVariacion2 = req.params.idOpcionVariacion2;
-
-    const result = await connection.execute(
-      `SELECT COUNT(*) AS count
-       FROM CONFIGURACION_PRODUCTO cp1
-       INNER JOIN CONFIGURACION_PRODUCTO cp2 ON cp1.id_item_producto = cp2.id_item_producto
-       INNER JOIN ITEM_PRODUCTO ip ON cp1.id_item_producto = ip.id
-       WHERE cp1.id_opcion_variacion = :idOpcionVariacion1
-       AND cp2.id_opcion_variacion = :idOpcionVariacion2
-       AND ip.id_producto = :idProducto`,
-      [idOpcionVariacion1, idOpcionVariacion2, idProducto]
-    );
-
-    const count = result.rows[0][0];
-
-    if (count > 0) {
-      // Si existe un registro que cumple con las condiciones, la combinación está disponible
-      res.json({ available: true });
-    } else {
-      // Si no existe ningún registro que cumpla las condiciones, la combinación está agotada
-      res.json({ available: false });
-    }
-    
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Error checking availability" });
-  } finally {
-    if (connection) {
-      try {
-        await connection.close();
-      } catch (error) {
-        console.error(error);
-      }
-    }
-  }
-});
-
-app.get('/cart/:userId', async (req, res) => {
-  try {
-    const userId = req.params.userId;
-    const connection = await oracledb.getConnection(dbConfig);
-    
-    // Verificar si el usuario existe antes de ejecutar la consulta
-    const userCheck = await connection.execute(
-      `SELECT 1 FROM USUARIO WHERE id = :userId`,
-      [userId]
-    );
-
-    // Si el usuario no existe, devolver un mensaje apropiado
-    if (userCheck.rows.length === 0) {
-      connection.close();
-      return res.status(404).json({ error: 'Usuario no encontrado' });
-    }
-
-    // Si el usuario existe, ejecutar la consulta para buscar el carrito
-    const result = await connection.execute(
-      `SELECT id FROM CARRITO WHERE id_usuario = :userId`,
-      [userId]
-    );
-    console.log("Usuario que ya tiene carrito: ", userId);
-    console.log("Carrito del Usuario que ya tiene carrito: ", result.rows[0]);
-    connection.close();
-    
-    if (result.rows.length > 0) {
-      res.json({ cartExists: true, cartId: result.rows[0] });
-    } else {
-      res.json({ cartExists: false });
-    }
-  } catch (error) {
-    console.error('Error:', error);
-    res.status(500).json({ error: 'Internal Server Error' });
-  }
-});
+  
+  //finaliza parte de steven
 
 
 // Endpoint para crear un nuevo carrito para el usuario actual
