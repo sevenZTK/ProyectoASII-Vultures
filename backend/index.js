@@ -1095,17 +1095,18 @@ app.post('/addcategory', async (req, res) => {
 app.post('/cart', async (req, res) => {
   try {
     const { userId } = req.body;
-    const connection = await oracledb.getConnection(dbConfig);
-    const result = await connection.execute(
-      `INSERT INTO CARRITO (id_usuario) VALUES (:userId) RETURNING id INTO :cartId`,
-      {
-        userId: { dir: oracledb.BIND_IN, val: userId },
-        cartId: { dir: oracledb.BIND_OUT, type: oracledb.NUMBER }
-      },
-      { autoCommit: true }
+    const connection = await mysql.createConnection(dbConfig);
+
+    const [result] = await connection.execute(
+      'INSERT INTO CARRITO (id_usuario) VALUES (?)',
+      [userId]
     );
-    connection.close();
-    res.json({ cartId: result.outBinds.cartId[0] });
+
+    // Getting the inserted cart ID
+    const cartId = result.insertId;
+
+    await connection.end();
+    res.json({ cartId });
   } catch (error) {
     console.error('Error:', error);
     res.status(500).json({ error: 'Internal Server Error' });
@@ -1121,17 +1122,17 @@ app.get('/configurationProduct/:option1/:option2/:productId', async (req, res) =
     const option2 = parseInt(req.params.option2);
     const productId = parseInt(req.params.productId);
 
-    connection = await oracledb.getConnection(dbConfig);
+    connection = await mysql.createConnection(dbConfig);
 
-    let result;
-    
+    let [result] = [];
+
     if (option2 === 0) {
-      result = await connection.execute(
+      [result] = await connection.execute(
         `SELECT ip.id
          FROM ITEM_PRODUCTO ip
          INNER JOIN CONFIGURACION_PRODUCTO cp ON ip.id = cp.id_item_producto
-         WHERE cp.id_opcion_variacion = :option1
-         AND ip.id_producto = :productId
+         WHERE cp.id_opcion_variacion = ?
+         AND ip.id_producto = ?
          AND NOT EXISTS (
            SELECT 1
            FROM CONFIGURACION_PRODUCTO
@@ -1139,30 +1140,30 @@ app.get('/configurationProduct/:option1/:option2/:productId', async (req, res) =
            GROUP BY id_item_producto
            HAVING COUNT(*) > 1
          )`,
-        { option1, productId }
+        [option1, productId]
       );
     } else {
-      result = await connection.execute(
+      [result] = await connection.execute(
         `SELECT id_item_producto 
          FROM CONFIGURACION_PRODUCTO cp
          INNER JOIN ITEM_PRODUCTO ip ON cp.id_item_producto = ip.id
-         WHERE cp.id_opcion_variacion IN (:option1, :option2)
-         AND ip.id_producto = :productId
+         WHERE cp.id_opcion_variacion IN (?, ?)
+         AND ip.id_producto = ?
          GROUP BY id_item_producto HAVING COUNT(*) = 2`,
-        { option1, option2, productId }
+        [option1, option2, productId]
       );
     }
 
-    if (result.rows.length > 0) {
-      const itemId = result.rows[0][0];
-      
-      const priceResult = await connection.execute(
-        `SELECT precio FROM ITEM_PRODUCTO WHERE id = :itemId`,
+    if (result.length > 0) {
+      const itemId = result[0].id_item_producto || result[0].id;
+
+      const [priceResult] = await connection.execute(
+        `SELECT precio FROM ITEM_PRODUCTO WHERE id = ?`,
         [itemId]
       );
 
-      const price = priceResult.rows[0][0];
-      
+      const price = priceResult[0].precio;
+
       res.json({ success: true, itemId, price });
     } else {
       res.json({ success: false, message: 'No se encontró el producto con las opciones seleccionadas.' });
@@ -1173,7 +1174,7 @@ app.get('/configurationProduct/:option1/:option2/:productId', async (req, res) =
   } finally {
     if (connection) {
       try {
-        await connection.close();
+        await connection.end();
       } catch (error) {
         console.error(error);
       }
@@ -1195,34 +1196,34 @@ app.post('/cartItem/:cartId/:itemId', async (req, res) => {
     console.log("Item ID:", itemId);
     console.log("Quantity:", quantity);
 
-    const connection = await oracledb.getConnection(dbConfig);
+    const connection = await mysql.createConnection(dbConfig);
 
     // Comprobación si el registro ya existe en la tabla CARRITO_ITEM
-    const checkResult = await connection.execute(
-      `SELECT id FROM CARRITO_ITEM WHERE id_carrito = :cartId AND id_item_producto = :itemId`,
-      { cartId, itemId }
+    const [checkResult] = await connection.execute(
+      `SELECT id FROM CARRITO_ITEM WHERE id_carrito = ? AND id_item_producto = ?`,
+      [cartId, itemId]
     );
 
-    if (checkResult.rows.length > 0) {
+    if (checkResult.length > 0) {
       // Si el registro ya existe, actualizar la cantidad
-      const updateResult = await connection.execute(
-        `UPDATE CARRITO_ITEM SET cantidad = cantidad + :quantity 
-        WHERE id_carrito = :cartId AND id_item_producto = :itemId`,
-        { cartId, itemId, quantity }
+      await connection.execute(
+        `UPDATE CARRITO_ITEM SET cantidad = cantidad + ? 
+        WHERE id_carrito = ? AND id_item_producto = ?`,
+        [quantity, cartId, itemId]
       );
     } else {
       // Si el registro no existe, insertar uno nuevo
-      const insertResult = await connection.execute(
+      await connection.execute(
         `INSERT INTO CARRITO_ITEM (id_carrito, id_item_producto, cantidad) 
-        VALUES (:cartId, :itemId, :quantity)`,
-        { cartId, itemId, quantity }
+        VALUES (?, ?, ?)`,
+        [cartId, itemId, quantity]
       );
     }
 
     // Commit para realizar cambios permanentes
     await connection.commit();
 
-    connection.close();
+    await connection.end();
     res.json({ success: true, message: 'Producto agregado al carrito con éxito.' });
   } catch (error) {
     console.error('Error:', error);
@@ -1244,34 +1245,27 @@ app.post("/addpromotions", async (req, res) => {
 
   let connection;
   try {
-    connection = await oracledb.getConnection();
+    connection = await mysql.createConnection(dbConfig);
 
     for (const id_categoria of categorias) {
       // Insertar la promoción
       const queryPromotion = `
         INSERT INTO PROMOCION (nombre, descripcion, descuento_porcentaje, fecha_inicio, fecha_final) 
-        VALUES (:nombre, :descripcion, :descuento_porcentaje, TO_DATE(:fecha_inicio, 'YYYY-MM-DD'), TO_DATE(:fecha_final, 'YYYY-MM-DD')) 
-        RETURNING id INTO :id`;
-      const bindsPromotion = {
-        nombre: newPromotionData.nombre,
-        descripcion: newPromotionData.descripcion,
-        descuento_porcentaje: newPromotionData.descuento_porcentaje,
-        fecha_inicio: newPromotionData.fecha_inicio,
-        fecha_final: newPromotionData.fecha_final,
-        id: { dir: oracledb.BIND_OUT, type: oracledb.NUMBER }
-      };
-      let resultPromotion = await connection.execute(queryPromotion, bindsPromotion, { autoCommit: true });
-      const newPromotionId = resultPromotion.outBinds.id[0]; // Obtener el ID generado de la promoción
+        VALUES (?, ?, ?, ?, ?)`;
+      const [resultPromotion] = await connection.execute(queryPromotion, [
+        newPromotionData.nombre,
+        newPromotionData.descripcion,
+        newPromotionData.descuento_porcentaje,
+        newPromotionData.fecha_inicio,
+        newPromotionData.fecha_final
+      ]);
+      const newPromotionId = resultPromotion.insertId; // Obtener el ID generado de la promoción
 
       // Insertar la relación entre la promoción y la categoría
       const queryPromotionCategory = `
         INSERT INTO PROMOCION_CATEGORIA (id_categoria, id_promocion) 
-        VALUES (:id_categoria, :id_promocion)`;
-      const bindsPromotionCategory = {
-        id_categoria,
-        id_promocion: newPromotionId
-      };
-      await connection.execute(queryPromotionCategory, bindsPromotionCategory, { autoCommit: true });
+        VALUES (?, ?)`;
+      await connection.execute(queryPromotionCategory, [id_categoria, newPromotionId]);
     }
 
     console.log("Promociones agregadas correctamente");
@@ -1283,7 +1277,7 @@ app.post("/addpromotions", async (req, res) => {
   } finally {
     if (connection) {
       try {
-        await connection.close();
+        await connection.end();
       } catch (closeError) {
         console.error("Error al cerrar la conexión:", closeError);
       }
@@ -1294,22 +1288,22 @@ app.post("/addpromotions", async (req, res) => {
 
 app.get("/allpromociones", async (req, res) => {
   try {
-    const connection = await oracledb.getConnection(dbConfig);
-    const result = await connection.execute(
+    const connection = await mysql.createConnection(dbConfig);
+    const [rows] = await connection.execute(
       `SELECT p.id, p.nombre, p.descripcion, p.descuento_porcentaje, p.fecha_inicio, p.fecha_final, c.nombre_categoria as categoria_nombre
        FROM PROMOCION p
        INNER JOIN PROMOCION_CATEGORIA pc ON p.id = pc.id_promocion
        INNER JOIN CATEGORIA_PRODUCTO c ON pc.id_categoria = c.id`
     );
-    await connection.close();
-    res.json(result.rows.map(row => ({
-      id: row[0],
-      nombre: row[1],
-      descripcion: row[2],
-      descuento_porcentaje: row[3],
-      fecha_inicio: row[4],
-      fecha_final: row[5],
-      categoria_nombre: row[6]
+    await connection.end();
+    res.json(rows.map(row => ({
+      id: row.id,
+      nombre: row.nombre,
+      descripcion: row.descripcion,
+      descuento_porcentaje: row.descuento_porcentaje,
+      fecha_inicio: row.fecha_inicio,
+      fecha_final: row.fecha_final,
+      categoria_nombre: row.categoria_nombre
     })));
   } catch (error) {
     console.error('Error fetching promociones:', error);
@@ -1321,18 +1315,21 @@ app.post("/updatepromocion", async (req, res) => {
   let connection;
   try {
     const { id, nombre, descripcion, descuento_porcentaje, fecha_inicio, fecha_final } = req.body;
-    connection = await oracledb.getConnection(dbConfig);
+    
+    connection = await mysql.createConnection(dbConfig);
+    
     const query = `
       UPDATE PROMOCION SET
-      nombre = :nombre,
-      descripcion = :descripcion,
-      descuento_porcentaje = :descuento_porcentaje,
-      fecha_inicio = TO_DATE(:fecha_inicio, 'YYYY-MM-DD'),
-      fecha_final = TO_DATE(:fecha_final, 'YYYY-MM-DD')
-      WHERE id = :id
+      nombre = ?,
+      descripcion = ?,
+      descuento_porcentaje = ?,
+      fecha_inicio = ?,
+      fecha_final = ?
+      WHERE id = ?
     `;
-    const binds = { id, nombre, descripcion, descuento_porcentaje, fecha_inicio, fecha_final };
-    await connection.execute(query, binds, { autoCommit: true });
+    
+    await connection.execute(query, [nombre, descripcion, descuento_porcentaje, fecha_inicio, fecha_final, id]);
+    
     res.json({ success: true, message: '¡Promoción actualizada exitosamente!' });
   } catch (error) {
     console.error('Error updating promocion:', error);
@@ -1340,7 +1337,7 @@ app.post("/updatepromocion", async (req, res) => {
   } finally {
     if (connection) {
       try {
-        await connection.close();
+        await connection.end();
       } catch (closeError) {
         console.error('Error al cerrar la conexión:', closeError);
       }
@@ -1352,15 +1349,15 @@ app.delete('/removepromocion', async (req, res) => {
   let connection;
   try {
     const promocionId = req.body.id;
-    connection = await oracledb.getConnection(dbConfig);
+    connection = await mysql.createConnection(dbConfig);
     
     // Eliminar referencias en la tabla PROMOCION_CATEGORIA primero
-    const deleteRefsQuery = `DELETE FROM PROMOCION_CATEGORIA WHERE id_promocion = :promocionId`;
-    await connection.execute(deleteRefsQuery, { promocionId }, { autoCommit: true });
+    const deleteRefsQuery = `DELETE FROM PROMOCION_CATEGORIA WHERE id_promocion = ?`;
+    await connection.execute(deleteRefsQuery, [promocionId]);
 
     // Luego eliminar la promoción en la tabla PROMOCION
-    const deletePromocionQuery = `DELETE FROM PROMOCION WHERE id = :promocionId`;
-    await connection.execute(deletePromocionQuery, { promocionId }, { autoCommit: true });
+    const deletePromocionQuery = `DELETE FROM PROMOCION WHERE id = ?`;
+    await connection.execute(deletePromocionQuery, [promocionId]);
     
     res.json({ success: true, message: '¡Promoción eliminada exitosamente!' });
   } catch (error) {
@@ -1369,7 +1366,7 @@ app.delete('/removepromocion', async (req, res) => {
   } finally {
     if (connection) {
       try {
-        await connection.close();
+        await connection.end();
       } catch (closeError) {
         console.error('Error al cerrar la conexión:', closeError);
       }
@@ -1381,24 +1378,24 @@ app.delete('/removepromocion', async (req, res) => {
 app.get("/searchpromocion", async (req, res) => {
   let connection;
   try {
-    const searchTerm = req.query.search ? req.query.search.toLowerCase() : "";
-    connection = await oracledb.getConnection(dbConfig);
+    const searchTerm = req.query.search ? `%${req.query.search.toLowerCase()}%` : "%";
+    connection = await mysql.createConnection(dbConfig);
     const query = `
       SELECT p.id, p.nombre, p.descripcion, p.descuento_porcentaje, p.fecha_inicio, p.fecha_final, c.nombre_categoria as categoria_nombre
       FROM PROMOCION p
       INNER JOIN PROMOCION_CATEGORIA pc ON p.id = pc.id_promocion
       INNER JOIN CATEGORIA_PRODUCTO c ON pc.id_categoria = c.id
-      WHERE LOWER(p.nombre) LIKE '%' || :searchTerm || '%'`;
-    const result = await connection.execute(query, { searchTerm });
-    await connection.close();
-    res.json(result.rows.map(row => ({
-      id: row[0],
-      nombre: row[1],
-      descripcion: row[2],
-      descuento_porcentaje: row[3],
-      fecha_inicio: row[4],
-      fecha_final: row[5],
-      categoria_nombre: row[6]
+      WHERE LOWER(p.nombre) LIKE ?`;
+    const [rows] = await connection.execute(query, [searchTerm]);
+    await connection.end();
+    res.json(rows.map(row => ({
+      id: row.id,
+      nombre: row.nombre,
+      descripcion: row.descripcion,
+      descuento_porcentaje: row.descuento_porcentaje,
+      fecha_inicio: row.fecha_inicio,
+      fecha_final: row.fecha_final,
+      categoria_nombre: row.categoria_nombre
     })));
   } catch (error) {
     console.error('Error searching promociones:', error);
@@ -1406,7 +1403,7 @@ app.get("/searchpromocion", async (req, res) => {
   } finally {
     if (connection) {
       try {
-        await connection.close();
+        await connection.end();
       } catch (err) {
         console.error('Error closing connection:', err);
       }
@@ -1416,89 +1413,112 @@ app.get("/searchpromocion", async (req, res) => {
 
 app.get("/cartItemCount/:userId", async (req, res) => {
   try {
+    // Obtener el userId de los parámetros de la solicitud
     const userId = req.params.userId;
-    const connection = await oracledb.getConnection(dbConfig);
-    const result = await connection.execute(
+    
+    // Establecer una conexión con la base de datos MySQL
+    const connection = await mysql.createConnection(dbConfig);
+
+    // Ejecutar la consulta SQL
+    const [rows, fields] = await connection.execute(
       `SELECT COUNT(ci.id) AS count
       FROM CARRITO_ITEM ci
       INNER JOIN CARRITO c ON ci.id_carrito = c.id
       INNER JOIN ITEM_PRODUCTO ip ON ci.id_item_producto = ip.id
-      WHERE c.id_usuario = :userId
+      WHERE c.id_usuario = ?
       AND ip.estado = 1`,
       [userId]
     );
-    await connection.close();
-    const cartItemCount = result.rows[0][0];
+
+    // Cerrar la conexión con MySQL
+    await connection.end();
+
+    // Obtener el conteo de ítems en el carrito del resultado de la consulta
+    const cartItemCount = rows[0].count;
+    
+    // Enviar la respuesta con el conteo de ítems del carrito
     res.json({ count: cartItemCount });
   } catch (error) {
-    console.error('Error fetching cart item count:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    // Manejar errores y enviar una respuesta de error
+    console.error('Error al obtener el conteo de ítems del carrito:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
   }
 });
 
 app.get("/cartItems/:userId", async (req, res) => {
   const userId = req.params.userId;
   try {
-    const connection = await oracledb.getConnection(dbConfig);
-    const result = await connection.execute(
+    // Establecer una conexión con la base de datos MySQL
+    const connection = await mysql.createConnection(dbConfig);
+
+    // Ejecutar la consulta SQL para obtener los ítems del carrito
+    const [rows] = await connection.execute(
       `SELECT ci.id, p.imagen_producto1, 
-       p.nombre_producto || ' ' || 
-       LISTAGG(opv.valor, ', ') WITHIN GROUP (ORDER BY opv.valor) AS nombre_producto, 
+       CONCAT(p.nombre_producto, ' ', 
+       COALESCE(GROUP_CONCAT(opv.valor ORDER BY opv.valor SEPARATOR ', '), '')) AS nombre_producto, 
        ip.precio, ci.cantidad, ip.id_producto
        FROM CARRITO_ITEM ci
        INNER JOIN ITEM_PRODUCTO ip ON ci.id_item_producto = ip.id
        INNER JOIN PRODUCTO p ON ip.id_producto = p.id
        LEFT JOIN CONFIGURACION_PRODUCTO cp ON ci.id_item_producto = cp.id_item_producto
        LEFT JOIN OPCION_VARIACION opv ON cp.id_opcion_variacion = opv.id
-       WHERE ci.id_carrito = (SELECT id FROM CARRITO WHERE id_usuario = :userId) AND ip.estado = 1
+       WHERE ci.id_carrito = (SELECT id FROM CARRITO WHERE id_usuario = ?) AND ip.estado = 1
        GROUP BY ci.id, p.imagen_producto1, p.nombre_producto, ip.precio, ci.cantidad, ip.id_producto`,
       [userId]
     );
-    
+
+    // Crear una lista para almacenar los ítems del carrito
     const items = [];
-    for (const row of result.rows) {
-      const productId = row[5]; // Obtener el id_producto
+    for (const row of rows) {
+      const productId = row.id_producto; // Obtener el id_producto
       const discount = await getDiscount(connection, productId); // Obtener el descuento del producto
       items.push({
-        id: row[0],
-        imagen_producto1: row[1],
-        nombre_producto: row[2],
-        precio: row[3],
-        cantidad: row[4],
+        id: row.id,
+        imagen_producto1: row.imagen_producto1,
+        nombre_producto: row.nombre_producto,
+        precio: row.precio,
+        cantidad: row.cantidad,
         descuento: discount
       });
     }
 
-    await connection.close();
+    // Cerrar la conexión con MySQL
+    await connection.end();
+    // Enviar la respuesta con los ítems del carrito
     res.json(items);
   } catch (error) {
-    console.error('Error fetching cart items:', error);
+    // Manejar errores y enviar una respuesta de error
+    console.error('Error al obtener los ítems del carrito:', error);
     res.status(500).json([]);
   }
 });
 
+// Función para obtener el descuento de un producto
 async function getDiscount(connection, productId) {
   try {
     const currentDate = new Date().toISOString().slice(0, 10); // Obtener la fecha actual en formato YYYY-MM-DD
-    const result = await connection.execute(
+
+    // Ejecutar la consulta SQL para obtener el descuento del producto
+    const [result] = await connection.execute(
       `SELECT pc.id_promocion, p.descuento_porcentaje
        FROM PROMOCION_CATEGORIA pc
        INNER JOIN PROMOCION p ON pc.id_promocion = p.id
        INNER JOIN PRODUCTO pr ON pc.id_categoria = pr.id_categoria
-       WHERE pr.id = :productId
-       AND p.fecha_inicio <= TO_DATE(:currentDate, 'YYYY-MM-DD')
-       AND p.fecha_final >= TO_DATE(:currentDate, 'YYYY-MM-DD')`,
+       WHERE pr.id = ?
+       AND p.fecha_inicio <= ?
+       AND p.fecha_final >= ?`,
       [productId, currentDate, currentDate]
     );
-    
-    if (result.rows.length > 0) {
-      return result.rows[0][1]; // Retorna el descuento si hay promoción
+
+    if (result.length > 0) {
+      return result[0].descuento_porcentaje; // Retorna el descuento si hay promoción
     } else {
       return 0; // Si no hay promoción, el descuento es 0
     }
   } catch (error) {
-    console.error('Error fetching product discount:', error);
-    return 0; // En caso de error, retorna 0 como descuento
+    // Manejar errores y retornar 0 como descuento en caso de error
+    console.error('Error al obtener el descuento del producto:', error);
+    return 0;
   }
 }
 
@@ -1506,28 +1526,39 @@ async function getDiscount(connection, productId) {
 
 app.put("/cartItems/updateQuantity/:itemId", async (req, res) => {
   const itemId = req.params.itemId;
-  const operation = req.body.operation; // Operation can be "increment" or "decrement"
+  const operation = req.body.operation; // La operación puede ser "increment" o "decrement"
 
   try {
-    const connection = await oracledb.getConnection(dbConfig);
+    // Establecer una conexión con la base de datos MySQL
+    const connection = await mysql.createConnection(dbConfig);
+    
+    // Determinar la consulta SQL basada en la operación
     let query;
     if (operation === "increment") {
-      query = `UPDATE CARRITO_ITEM SET cantidad = cantidad + 1 WHERE id = :itemId`;
+      query = `UPDATE CARRITO_ITEM SET cantidad = cantidad + 1 WHERE id = ?`;
     } else if (operation === "decrement") {
-      query = `UPDATE CARRITO_ITEM SET cantidad = cantidad - 1 WHERE id = :itemId AND cantidad > 1`;
+      query = `UPDATE CARRITO_ITEM SET cantidad = cantidad - 1 WHERE id = ? AND cantidad > 1`;
     }
-    const result = await connection.execute(query, [itemId], { autoCommit: true });
     
-    // Get the updated item
-    const updatedItemQuery = `SELECT * FROM CARRITO_ITEM WHERE id = :itemId`;
-    const updatedItemResult = await connection.execute(updatedItemQuery, [itemId]);
-    const updatedItem = updatedItemResult.rows[0];
+    // Ejecutar la consulta para actualizar la cantidad
+    await connection.execute(query, [itemId]);
 
-    await connection.close();
+    // Obtener el ítem actualizado
+    const [updatedItemResult] = await connection.execute(
+      `SELECT * FROM CARRITO_ITEM WHERE id = ?`,
+      [itemId]
+    );
+    const updatedItem = updatedItemResult[0];
+
+    // Cerrar la conexión con MySQL
+    await connection.end();
+
+    // Enviar la respuesta con el ítem actualizado
     res.json(updatedItem);
   } catch (error) {
-    console.error('Error updating quantity:', error);
-    res.status(500).json({ error: 'Error updating quantity' });
+    // Manejar errores y enviar una respuesta de error
+    console.error('Error al actualizar la cantidad:', error);
+    res.status(500).json({ error: 'Error al actualizar la cantidad' });
   }
 });
 
