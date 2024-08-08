@@ -74,17 +74,18 @@ app.post('/login', async (req, res) => {
     const { correo, contraseña } = req.body;
 
     // Verificar si el usuario existe y la contraseña es correcta
-    const connection = await oracledb.getConnection(dbConfig);
-    const resultUsuario = await connection.execute(
-      "SELECT id FROM USUARIO WHERE correo = :correo AND contraseña = :contraseña",
+    const connection = await mysql.createConnection(dbConfig);
+    const [rows] = await connection.execute(
+      "SELECT id FROM USUARIO WHERE correo = ? AND contraseña = ?",
       [correo, contraseña]
     );
-    await connection.close();
+    await connection.end();
 
-    if (resultUsuario.rows.length === 0) {
+    if (rows.length === 0) {
       return res.status(401).json({ success: false, errors: "Correo o contraseña incorrectos." });
     }
-    const userId = resultUsuario.rows[0][0];
+    const userId = rows[0].id;
+
     // Si las credenciales son correctas, se permite el acceso a la página
     res.status(200).json({ success: true, message: "Inicio de sesión exitoso.", userId });
   } catch (error) {
@@ -94,61 +95,57 @@ app.post('/login', async (req, res) => {
 });
 
 
+
 app.post('/signup', async (req, res) => {
+  const connection = await mysql.createConnection(dbConfig);
+
   try {
     const { nombre, apellido, correo, telefono, contraseña, id_pais, direccion, estado, ciudad, codigo_postal } = req.body;
 
+    // Iniciar transacción
+    await connection.beginTransaction();
+
     // Verificar si el usuario ya está registrado
-    const connection = await oracledb.getConnection(dbConfig);
-    const resultUsuarioExistente = await connection.execute("SELECT * FROM USUARIO WHERE correo = :correo", [correo]);
-    if (resultUsuarioExistente.rows.length > 0) {
-      await connection.close();
+    const [resultUsuarioExistente] = await connection.execute(
+      "SELECT * FROM USUARIO WHERE correo = ?",
+      [correo]
+    );
+    if (resultUsuarioExistente.length > 0) {
+      await connection.rollback();
       return res.status(400).json({ success: false, errors: "Usuario ya registrado, inicia sesión." });
     }
 
     // Insertar usuario
-    const resultUsuario = await connection.execute(
-      "INSERT INTO USUARIO (id_tipo, nombre, apellido, correo, telefono, contraseña) VALUES (2, :nombre, :apellido, :correo, :telefono, :contraseña) RETURNING id INTO :id",
-      {
-        nombre,
-        apellido,
-        correo,
-        telefono,
-        contraseña,
-        id: { dir: oracledb.BIND_OUT, type: oracledb.NUMBER }
-      }
+    const [resultUsuario] = await connection.execute(
+      "INSERT INTO USUARIO (id_tipo, nombre, apellido, correo, telefono, contraseña) VALUES (2, ?, ?, ?, ?, ?)",
+      [nombre, apellido, correo, telefono, contraseña]
     );
-    const idUsuario = resultUsuario.outBinds.id[0];
+    const idUsuario = resultUsuario.insertId;
 
     // Insertar dirección
-    const resultDireccion = await connection.execute(
-      "INSERT INTO DIRECCION (direccion, estado, ciudad, codigo_postal, id_pais) VALUES (:direccion, :estado, :ciudad, :codigo_postal, :id_pais) RETURNING id INTO :id",
-      {
-        direccion,
-        estado,
-        ciudad,
-        codigo_postal,
-        id_pais,
-        id: { dir: oracledb.BIND_OUT, type: oracledb.NUMBER }
-      }
+    const [resultDireccion] = await connection.execute(
+      "INSERT INTO DIRECCION (direccion, estado, ciudad, codigo_postal, id_pais) VALUES (?, ?, ?, ?, ?)",
+      [direccion, estado, ciudad, codigo_postal, id_pais]
     );
-    const idDireccion = resultDireccion.outBinds.id[0];
+    const idDireccion = resultDireccion.insertId;
 
     // Asociar dirección con usuario
-    await connection.execute("INSERT INTO DIRECCION_USUARIO (id_usuario, id_direccion) VALUES (:idUsuario, :idDireccion)", [idUsuario, idDireccion]);
+    await connection.execute(
+      "INSERT INTO DIRECCION_USUARIO (id_usuario, id_direccion) VALUES (?, ?)",
+      [idUsuario, idDireccion]
+    );
 
     await connection.commit(); // Confirmar transacción
 
-    await connection.close();
-
     res.status(200).json({ success: true, message: "Usuario registrado exitosamente." });
   } catch (error) {
+    await connection.rollback(); // Revertir transacción en caso de error
     console.error("Error en el registro de usuario:", error);
     res.status(500).json({ success: false, errors: "Error en el servidor al registrar usuario." });
+  } finally {
+    await connection.end(); // Cerrar conexión
   }
 });
-
-
 
 
 
@@ -156,175 +153,183 @@ app.post('/signup', async (req, res) => {
 
 // Endpoint para obtener la lista de países
 app.get('/countries', async (req, res) => {
+  const connection = await mysql.createConnection(dbConfig);
+
   try {
-    const connection = await oracledb.getConnection(dbConfig);
-    const result = await connection.execute('SELECT * FROM PAIS');
-    const countries = result.rows.map(row => ({
-      id: row[0],
-      nombre_pais: row[1]
+    const [rows] = await connection.execute('SELECT * FROM PAIS');
+    const countries = rows.map(row => ({
+      id: row.id,
+      nombre_pais: row.nombre_pais
     }));
-    await connection.close();
+
     res.json(countries);
   } catch (error) {
     console.error("Error al obtener la lista de países:", error);
     res.status(500).json({ error: "Error interno del servidor" });
+  } finally {
+    await connection.end(); // Cerrar conexión
   }
 });
 
 
-    app.get("/allproducts", async (req, res) => {
-      let connection;
+app.get("/allproducts", async (req, res) => {
+  let connection;
+  
+  try {
+    // Establece la conexión con la base de datos
+    connection = await mysql.createConnection(dbConfig);
     
+    // Ejecuta la consulta para obtener todos los productos con el nombre de la categoría
+    const [rows] = await connection.execute(
+      `SELECT p.id, p.nombre_producto, p.descripcion_producto, p.imagen_producto1, c.nombre_categoria
+       FROM PRODUCTO p
+       INNER JOIN CATEGORIA_PRODUCTO c ON p.id_categoria = c.id
+       WHERE p.estado = 1`
+    );
+    
+    // Envía los productos como respuesta
+    res.json(rows.map(row => ({
+      id: row.id,
+      nombre_producto: row.nombre_producto,
+      descripcion_producto: row.descripcion_producto,
+      imagen_producto1: row.imagen_producto1,
+      nombre_categoria: row.nombre_categoria
+    })));
+    
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Error al obtener los productos" });
+  } finally {
+    // Cierra la conexión
+    if (connection) {
       try {
-        // Establece la conexión con la base de datos
-        connection = await oracledb.getConnection(dbConfig);
-    
-        // Ejecuta la consulta para obtener todos los productos con el nombre de la categoría
-        const result = await connection.execute(
-          `SELECT p.id, p.nombre_producto, p.descripcion_producto, p.imagen_producto1, c.nombre_categoria
-           FROM PRODUCTO p
-           INNER JOIN CATEGORIA_PRODUCTO c ON p.id_categoria = c.id
-           WHERE p.estado = 1`
-        );
-    
-        // Envia los productos como respuesta
-        res.json(result.rows.map(row => ({
-          id: row[0],
-          nombre_producto: row[1],
-          descripcion_producto: row[2],
-          imagen_producto1: row[3],
-          nombre_categoria: row[4]
-        })));
-        
+        await connection.end();
       } catch (error) {
         console.error(error);
-        res.status(500).json({ error: "Error al obtener los productos" });
-      } finally {
-        // Cierra la conexión
-        if (connection) {
-          try {
-            await connection.close();
-          } catch (error) {
-            console.error(error);
-          }
-        }
       }
-    });
+    }
+  }
+});
     
     
-    app.get("/allproductsDisplay", async (req, res) => {
-      let connection;
-    
+app.get("/allproductsDisplay", async (req, res) => {
+  let connection;
+
+  try {
+    // Establece la conexión con la base de datos
+    connection = await mysql.createConnection(dbConfig);
+
+    // Ejecuta la consulta para obtener todos los productos con el nombre de la categoría
+    const [productosResult] = await connection.execute(
+      `SELECT p.id, p.nombre_producto, p.descripcion_producto, p.imagen_producto1, p.imagen_producto2, p.imagen_producto3, c.nombre_categoria, p.id_categoria
+       FROM PRODUCTO p
+       INNER JOIN CATEGORIA_PRODUCTO c ON p.id_categoria = c.id
+       WHERE p.estado = 1`
+    );
+
+    // Extraer los ids de los productos de la primera consulta
+    const idsProductos = productosResult.map(row => row.id);
+
+    // Dividir los ids de los productos en grupos de menos de 1000
+    const gruposIds = [];
+    while (idsProductos.length > 0) {
+      gruposIds.push(idsProductos.splice(0, 1000));
+    }
+
+    // Consultar precios para cada grupo de IDs de productos
+    const preciosPorId = {};
+    for (const grupo of gruposIds) {
+      const [preciosResult] = await connection.execute(
+        `SELECT id_producto, precio
+         FROM ITEM_PRODUCTO
+         WHERE id_producto IN (${grupo.map(() => '?').join(",")})`,
+        grupo
+      );
+
+      // Mapear los precios a un objeto para facilitar la búsqueda
+      for (const row of preciosResult) {
+        preciosPorId[row.id_producto] = row.precio;
+      }
+    }
+
+    // Enviar los productos con sus precios correspondientes
+    const productosConPrecios = productosResult.map(row => ({
+      id: row.id,
+      nombre_producto: row.nombre_producto,
+      descripcion_producto: row.descripcion_producto,
+      imagen_producto1: row.imagen_producto1,
+      imagen_producto2: row.imagen_producto2,
+      imagen_producto3: row.imagen_producto3,
+      nombre_categoria: row.nombre_categoria,
+      id_categoria: row.id_categoria,
+      precio: preciosPorId[row.id] || 0 // Obtener el precio del objeto de precios utilizando el id del producto como clave
+    }));
+
+    // Enviar los productos como respuesta
+    res.json(productosConPrecios);
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Error al obtener los productos" });
+  } finally {
+    // Cierra la conexión
+    if (connection) {
       try {
-        // Establece la conexión con la base de datos
-        connection = await oracledb.getConnection(dbConfig);
-    
-        // Ejecuta la consulta para obtener todos los productos con el nombre de la categoría
-        const productosResult = await connection.execute(
-          `SELECT p.id, p.nombre_producto, p.descripcion_producto, p.imagen_producto1, p.imagen_producto2, p.imagen_producto3, c.nombre_categoria, p.id_categoria
-           FROM PRODUCTO p
-           INNER JOIN CATEGORIA_PRODUCTO c ON p.id_categoria = c.id
-           WHERE p.estado = 1`
-        );
-    
-        // Extraer los ids de los productos de la primera consulta
-        const idsProductos = productosResult.rows.map(row => row[0]);
-    
-        // Dividir los ids de los productos en grupos de menos de 1000
-        const gruposIds = [];
-        while (idsProductos.length > 0) {
-          gruposIds.push(idsProductos.splice(0, 1000));
-        }
-    
-        // Consultar precios para cada grupo de IDs de productos
-        const preciosPorId = {};
-        for (const grupo of gruposIds) {
-          const preciosResult = await connection.execute(
-            `SELECT id_producto, precio
-             FROM ITEM_PRODUCTO
-             WHERE id_producto IN (${grupo.map((id, index) => ':' + (index + 1)).join(",")})`,
-            grupo
-          );
-    
-          // Mapear los precios a un objeto para facilitar la búsqueda
-          for (const row of preciosResult.rows) {
-            preciosPorId[row[0]] = row[1];
-          }
-        }
-    
-        // Enviar los productos con sus precios correspondientes
-        const productosConPrecios = productosResult.rows.map(row => ({
-          id: row[0],
-          nombre_producto: row[1],
-          descripcion_producto: row[2],
-          imagen_producto1: row[3],
-          imagen_producto2: row[4],
-          imagen_producto3: row[5],
-          nombre_categoria: row[6],
-          id_categoria: row[7],
-          precio: preciosPorId[row[0]] // Obtener el precio del objeto de precios utilizando el id del producto como clave
-        }));
-    
-        // Envia los productos como respuesta
-        res.json(productosConPrecios);
-    
+        await connection.end();
       } catch (error) {
         console.error(error);
-        res.status(500).json({ error: "Error al obtener los productos" });
-      } finally {
-        // Cierra la conexión
-        if (connection) {
-          try {
-            await connection.close();
-          } catch (error) {
-            console.error(error);
-          }
-        }
       }
-    });
+    }
+  }
+});
     
     
   
 
-  app.post('/addproduct', async (req, res) => {
-    const newProductData = {
-        id_categoria: req.body.id_categoria,
-        nombre_producto: req.body.nombre_producto,
-        descripcion_producto: req.body.descripcion_producto,
-        imagen_producto1: req.body.imagen_producto1,
-        imagen_producto2: req.body.imagen_producto2,
-        imagen_producto3: req.body.imagen_producto3,
-        estado: req.body.estado,
-    };
+app.post('/addproduct', async (req, res) => {
+  const newProductData = {
+    id_categoria: req.body.id_categoria,
+    nombre_producto: req.body.nombre_producto,
+    descripcion_producto: req.body.descripcion_producto,
+    imagen_producto1: req.body.imagen_producto1,
+    imagen_producto2: req.body.imagen_producto2,
+    imagen_producto3: req.body.imagen_producto3,
+    estado: req.body.estado,
+  };
+
+  let connection;
+
+  try {
+    // Establece la conexión con la base de datos
+    connection = await mysql.createConnection(dbConfig);
 
     // Verificar si el producto ya existe
-    const queryCheckProduct = `SELECT id FROM PRODUCTO WHERE nombre_producto = :nombre_producto`;
-    const bindsCheckProduct = { nombre_producto: newProductData.nombre_producto };
+    const [resultCheckProduct] = await connection.execute(
+      `SELECT id FROM PRODUCTO WHERE nombre_producto = ?`,
+      [newProductData.nombre_producto]
+    );
 
-    oracledb.getConnection(async (err, connection) => {
-        try {
-            let resultCheckProduct = await connection.execute(queryCheckProduct, bindsCheckProduct);
-            if (resultCheckProduct.rows.length > 0) {
-                // Si el producto ya existe, obtén su ID y continúa con el resto del código
-                const existingProductId = resultCheckProduct.rows[0][0];
-                await handleItemAndConfigInsertion(existingProductId, req, res, connection);
-            } else {
-                // Si el producto no existe, procede a insertarlo
-                await insertNewProduct(newProductData, req, res, connection);
-            }
-        } catch (err) {
-            console.error(err.message);
-            res.status(500).json({ success: false, error: "Error al verificar o insertar el producto en Oracle Express" });
-        } finally {
-            if (connection) {
-                try {
-                    await connection.close();
-                } catch (err) {
-                    console.error(err.message);
-                }
-            }
-        }
-    });
+    if (resultCheckProduct.length > 0) {
+      // Si el producto ya existe, obtén su ID y continúa con el resto del código
+      const existingProductId = resultCheckProduct[0].id;
+      await handleItemAndConfigInsertion(existingProductId, req, res, connection);
+    } else {
+      // Si el producto no existe, procede a insertarlo
+      await insertNewProduct(newProductData, req, res, connection);
+    }
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ success: false, error: "Error al verificar o insertar el producto en MySQL" });
+  } finally {
+    // Cierra la conexión
+    if (connection) {
+      try {
+        await connection.end();
+      } catch (err) {
+        console.error(err.message);
+      }
+    }
+  }
 });
 
 async function insertNewProduct(newProductData, req, res, connection) {
@@ -349,67 +354,84 @@ async function insertNewProduct(newProductData, req, res, connection) {
     await handleItemAndConfigInsertion(newProductId, req, res, connection);
 }
 
+async function insertNewProduct(newProductData, req, res, connection) {
+  // Insertar en MySQL
+  const queryProducto = `INSERT INTO PRODUCTO (id_categoria, nombre_producto, descripcion_producto, imagen_producto1, imagen_producto2, imagen_producto3, estado) 
+                         VALUES (?, ?, ?, ?, ?, ?, ?)`;
+  const valuesProducto = [
+    newProductData.id_categoria,
+    newProductData.nombre_producto,
+    newProductData.descripcion_producto,
+    newProductData.imagen_producto1,
+    newProductData.imagen_producto2,
+    newProductData.imagen_producto3,
+    newProductData.estado
+  ];
+
+  let result = await connection.execute(queryProducto, valuesProducto);
+  const newProductId = result[0].insertId; // Obtener el ID generado
+
+  await handleItemAndConfigInsertion(newProductId, req, res, connection);
+}
+
 async function handleItemAndConfigInsertion(productId, req, res, connection) {
   // Insertar en ITEM_PRODUCTO
   const newItemData = {
-      id_producto: productId,
-      cantidad_disp: req.body.cantidad,
-      precio: Number(parseFloat(req.body.precio).toFixed(2)),
-      estado: req.body.estado,
+    id_producto: productId,
+    cantidad_disp: req.body.cantidad,
+    precio: Number(parseFloat(req.body.precio).toFixed(2)),
+    estado: req.body.estado,
   };
 
   const queryItem = `INSERT INTO ITEM_PRODUCTO (id_producto, cantidad_disp, precio, estado) 
-                     VALUES (:id_producto, :cantidad_disp, :precio, :estado) 
-                     RETURNING id INTO :id`;
-  const bindsItem = {
-      id_producto: newItemData.id_producto,
-      cantidad_disp: newItemData.cantidad_disp,
-      precio: newItemData.precio,
-      estado: newItemData.estado,
-      id: { dir: oracledb.BIND_OUT, type: oracledb.NUMBER }
-  };
+                     VALUES (?, ?, ?, ?)`;
+  const valuesItem = [
+    newItemData.id_producto,
+    newItemData.cantidad_disp,
+    newItemData.precio,
+    newItemData.estado
+  ];
 
-  let itemId;
-  let result = await connection.execute(queryItem, bindsItem, { autoCommit: true });
-  itemId = result.outBinds.id[0];
+  let result = await connection.execute(queryItem, valuesItem);
+  const itemId = result[0].insertId; // Obtener el ID generado
 
   // Verificar si id_opcion_variacion_1 tiene valor
   if (req.body.id_opcion_variacion_1 && req.body.id_opcion_variacion_1 !== "") {
-      // Insertar dos veces en CONFIGURACION_PRODUCTO
-      const newConfigData = [
-          {
-              id_item_producto: itemId,
-              id_opcion_variacion: req.body.id_opcion_variacion
-          },
-          {
-              id_item_producto: itemId,
-              id_opcion_variacion: req.body.id_opcion_variacion_1
-          }
-      ];
-
-      const queryConfig = `INSERT INTO CONFIGURACION_PRODUCTO (id_item_producto, id_opcion_variacion) 
-                           VALUES (:id_item_producto, :id_opcion_variacion)`;
-      for (const data of newConfigData) {
-          const bindsConfig = data;
-          result = await connection.execute(queryConfig, bindsConfig, { autoCommit: true });
-          console.log("Inserted into CONFIGURACION_PRODUCTO:", result.rowsAffected);
+    // Insertar dos veces en CONFIGURACION_PRODUCTO
+    const newConfigData = [
+      {
+        id_item_producto: itemId,
+        id_opcion_variacion: req.body.id_opcion_variacion
+      },
+      {
+        id_item_producto: itemId,
+        id_opcion_variacion: req.body.id_opcion_variacion_1
       }
+    ];
+
+    const queryConfig = `INSERT INTO CONFIGURACION_PRODUCTO (id_item_producto, id_opcion_variacion) 
+                         VALUES (?, ?)`;
+    for (const data of newConfigData) {
+      const valuesConfig = [data.id_item_producto, data.id_opcion_variacion];
+      result = await connection.execute(queryConfig, valuesConfig);
+      console.log("Inserted into CONFIGURACION_PRODUCTO:", result[0].affectedRows);
+    }
   } else {
-      // Insertar solo una vez en CONFIGURACION_PRODUCTO
-      const newConfigData = {
-          id_item_producto: itemId,
-          id_opcion_variacion: req.body.id_opcion_variacion
-      };
+    // Insertar solo una vez en CONFIGURACION_PRODUCTO
+    const newConfigData = {
+      id_item_producto: itemId,
+      id_opcion_variacion: req.body.id_opcion_variacion
+    };
 
-      const queryConfig = `INSERT INTO CONFIGURACION_PRODUCTO (id_item_producto, id_opcion_variacion) 
-                           VALUES (:id_item_producto, :id_opcion_variacion)`;
-      const bindsConfig = newConfigData;
+    const queryConfig = `INSERT INTO CONFIGURACION_PRODUCTO (id_item_producto, id_opcion_variacion) 
+                         VALUES (?, ?)`;
+    const valuesConfig = [newConfigData.id_item_producto, newConfigData.id_opcion_variacion];
 
-      result = await connection.execute(queryConfig, bindsConfig, { autoCommit: true });
-      console.log("Inserted into CONFIGURACION_PRODUCTO:", result.rowsAffected);
+    result = await connection.execute(queryConfig, valuesConfig);
+    console.log("Inserted into CONFIGURACION_PRODUCTO:", result[0].affectedRows);
   }
 
-  console.log("Inserted into Oracle:", result.rowsAffected);
+  console.log("Inserted into MySQL:", result[0].affectedRows);
   res.json({ success: true, name: req.body.nombre_producto });
 }
 
@@ -417,232 +439,246 @@ async function handleItemAndConfigInsertion(productId, req, res, connection) {
 
 
 
-  
-  app.get("/categories", async (req, res) => {
-    try {
-      const categorias = await obtenerCategorias();
-      res.json(categorias);
-    } catch (error) {
-      console.error("Error al obtener las categorías desde Oracle:", err.message);
-      throw err;
-    }
-  });
 
-  async function obtenerCategorias() {
-    let connection;
-    try {
-      connection = await oracledb.getConnection();
-      const query = `
-  SELECT id, nombre_categoria
-  FROM CATEGORIA_PRODUCTO cp1
-  WHERE NOT EXISTS (
-      SELECT 1
-      FROM CATEGORIA_PRODUCTO cp2
-      WHERE cp1.id = cp2.id_categoria_padre
-  )
-`;
+  
+app.get("/categories", async (req, res) => {
+  try {
+    const categorias = await obtenerCategorias();
+    res.json(categorias);
+  } catch (error) {
+    console.error("Error al obtener las categorías desde MySQL:", error.message);
+    res.status(500).json({ error: "Error al obtener las categorías" });
+  }
+});
 
-      const result = await connection.execute(query);
-      // Mapear correctamente los resultados
-      return result.rows.map(row => ({
-        id: row[0],
-        nombre_categoria: row[1]
-      }));
-    } catch (err) {
-      console.error("Error al obtener las categorías desde Oracle:", err.message);
-      throw err;
-    } finally {
-      if (connection) {
-        try {
-          await connection.close();
-        } catch (err) {
-          console.error("Error al cerrar la conexión:", err.message);
-        }
-      }
-    }
-  }
-  
-  
-  
-  app.get("/variations", async (req, res) => {
-    try {
-      const variaciones = await obtenerVariaciones();
-      res.json(variaciones);
-    } catch (error) {
-      console.error("Error al obtener las variaciones desde Oracle:", err.message);
-      throw err;
-    }
-  });
+async function obtenerCategorias() {
+  let connection;
+  try {
+    connection = await mysql.createConnection(dbConfig);
+    const query = `
+      SELECT id, nombre_categoria
+      FROM CATEGORIA_PRODUCTO cp1
+      WHERE NOT EXISTS (
+          SELECT 1
+          FROM CATEGORIA_PRODUCTO cp2
+          WHERE cp1.id = cp2.id_categoria_padre
+      )
+    `;
 
-  async function obtenerVariaciones() {
-    let connection;
-    try {
-      connection = await oracledb.getConnection();
-      const query = `SELECT id, nombre FROM VARIACION`;
-      const result = await connection.execute(query);
-      // Mapear correctamente los resultados
-      return result.rows.map(row => ({
-        id: row[0],
-        nombre: row[1]
-      }));
-    } catch (err) {
-      console.error("Error al obtener las variaciones desde Oracle:", err.message);
-      throw err;
-    } finally {
-      if (connection) {
-        try {
-          await connection.close();
-        } catch (err) {
-          console.error("Error al cerrar la conexión:", err.message);
-        }
+    const [rows] = await connection.execute(query);
+    // Mapear correctamente los resultados
+    return rows.map(row => ({
+      id: row.id,
+      nombre_categoria: row.nombre_categoria
+    }));
+  } catch (err) {
+    console.error("Error al obtener las categorías desde MySQL:", err.message);
+    throw err;
+  } finally {
+    if (connection) {
+      try {
+        await connection.end();
+      } catch (err) {
+        console.error("Error al cerrar la conexión:", err.message);
       }
     }
   }
+}
   
   
-  app.get("/options", async (req, res) => {
-    try {
-      const idVariacion = req.query.idVariacion;
-      const opcionesVariacion = await obtenerOpcionesVariacion(idVariacion);
-      res.json(opcionesVariacion);
-    } catch (error) {
-      console.error("Error al obtener las opciones desde Oracle:", err.message);
-      throw err;
-    }
-  });
   
-  async function obtenerOpcionesVariacion(idVariacion) {
-    let connection;
-    try {
-      connection = await oracledb.getConnection();
-      const query = `SELECT id, valor FROM OPCION_VARIACION WHERE id_variacion = :idVariacion`;
-      const result = await connection.execute(query, [idVariacion]);
-      // Mapear correctamente los resultados
-      return result.rows.map(row => ({
-        id: row[0],
-        valor: row[1]
-      }));
-    } catch (err) {
-      console.error("Error al obtener las opciones desde Oracle:", err.message);
-      throw err;
-    } finally {
-      if (connection) {
-        try {
-          await connection.close();
-        } catch (err) {
-          console.error("Error al cerrar la conexión:", err.message);
-        }
+app.get("/variations", async (req, res) => {
+  try {
+    const variaciones = await obtenerVariaciones();
+    res.json(variaciones);
+  } catch (error) {
+    console.error("Error al obtener las variaciones desde MySQL:", error.message);
+    res.status(500).json({ error: "Error al obtener las variaciones" });
+  }
+});
+
+async function obtenerVariaciones() {
+  let connection;
+  try {
+    connection = await mysql.createConnection(dbConfig);
+    const query = `SELECT id, nombre FROM VARIACION`;
+    const [rows] = await connection.execute(query);
+    // Mapear correctamente los resultados
+    return rows.map(row => ({
+      id: row.id,
+      nombre: row.nombre
+    }));
+  } catch (err) {
+    console.error("Error al obtener las variaciones desde MySQL:", err.message);
+    throw err;
+  } finally {
+    if (connection) {
+      try {
+        await connection.end();
+      } catch (err) {
+        console.error("Error al cerrar la conexión:", err.message);
       }
     }
   }
+}
   
   
-  app.post("/removeproduct", async (req, res) => {
-    let itemProductConnection;
-  
-    try {
-      const productId = req.body.id;
-  
-      // Obtener una nueva conexión
-      itemProductConnection = await oracledb.getConnection(dbConfig);
-  
-      // Iniciar la transacción y ejecutar las consultas SQL dentro de ella
-      const query = `
-        DECLARE
-          PRAGMA AUTONOMOUS_TRANSACTION;
-        BEGIN
-          -- Eliminar registros de item_producto
-          UPDATE ITEM_PRODUCTO SET estado = 3 WHERE id_producto = :id;
-          -- Eliminar producto de la tabla producto
-          UPDATE PRODUCTO SET estado = 3 WHERE id = :id;
-          -- Confirmar la transacción
-          COMMIT;
-        END;
-      `;
-      const binds = { id: productId };
-      await itemProductConnection.execute(query, binds, { autoCommit: true });
-  
-      console.log("Producto eliminado correctamente");
-  
-      res.json({ success: true, message: "Producto eliminado correctamente" });
-    } catch (error) {
-      console.error(error.message);
-      res.status(500).json({ success: false, error: "Error al eliminar el producto" });
-    } finally {
-      // Cerrar la conexión
-      if (itemProductConnection) {
-        try {
-          await itemProductConnection.close();
-        } catch (closeError) {
-          console.error("Error al cerrar la conexión:", closeError);
-        }
-      }
-    }
-  });
-  
-  async function getCategoryById(categoryId) {
-    let connection;
-    try {
-      connection = await oracledb.getConnection(dbConfig);
-      const result = await connection.execute(
-        `SELECT * FROM CATEGORIA_PRODUCTO WHERE id = :categoryId`, { categoryId }
-      );
-      return result.rows.length > 0 ? result.rows[0] : null;
-    } catch (error) {
-      console.error('Error al obtener la categoría por ID:', error.message);
-      throw error;
-    } finally {
-      if (connection) {
-        try {
-          await connection.close();
-        } catch (closeError) {
-          console.error('Error al cerrar la conexión:', closeError);
-        }
+app.get("/options", async (req, res) => {
+  try {
+    const idVariacion = req.query.idVariacion;
+    const opcionesVariacion = await obtenerOpcionesVariacion(idVariacion);
+    res.json(opcionesVariacion);
+  } catch (error) {
+    console.error("Error al obtener las opciones desde MySQL:", error.message);
+    res.status(500).json({ error: "Error al obtener las opciones" });
+  }
+});
+
+async function obtenerOpcionesVariacion(idVariacion) {
+  let connection;
+  try {
+    connection = await mysql.createConnection(dbConfig);
+    const query = `SELECT id, valor FROM OPCION_VARIACION WHERE id_variacion = ?`;
+    const [rows] = await connection.execute(query, [idVariacion]);
+    // Mapear correctamente los resultados
+    return rows.map(row => ({
+      id: row.id,
+      valor: row.valor
+    }));
+  } catch (err) {
+    console.error("Error al obtener las opciones desde MySQL:", err.message);
+    throw err;
+  } finally {
+    if (connection) {
+      try {
+        await connection.end();
+      } catch (err) {
+        console.error("Error al cerrar la conexión:", err.message);
       }
     }
   }
+}
   
-  app.post('/addcategory', async (req, res) => {
-    let connection;
   
+app.post("/removeproduct", async (req, res) => {
+  let connection;
+
+  try {
+    const productId = req.body.id;
+
+    // Obtener una nueva conexión
+    connection = await mysql.createConnection(dbConfig);
+
+    // Iniciar la transacción y ejecutar las consultas SQL dentro de ella
+    await connection.beginTransaction();
+
+    const updateItemProductQuery = `
+      UPDATE ITEM_PRODUCTO 
+      SET estado = ? 
+      WHERE id_producto = ?;
+    `;
+    const updateProductQuery = `
+      UPDATE PRODUCTO 
+      SET estado = ? 
+      WHERE id = ?;
+    `;
+
+    // Ejecutar las consultas
+    await connection.execute(updateItemProductQuery, [3, productId]);
+    await connection.execute(updateProductQuery, [3, productId]);
+
+    // Confirmar la transacción
+    await connection.commit();
+
+    console.log("Producto eliminado correctamente");
+
+    res.json({ success: true, message: "Producto eliminado correctamente" });
+  } catch (error) {
+    console.error(error.message);
     try {
-      const { name, parentId } = req.body;
-  
-      // Verificar si parentId es válido
-      const parentCategory = parentId && await getCategoryById(parentId);
-      if (parentId && !parentCategory) {
-        throw new Error('El parentId proporcionado no es válido');
-      }
-  
-      const query = `
-        INSERT INTO CATEGORIA_PRODUCTO
-        ${parentId ? '(id_categoria_padre, nombre_categoria)' : '(nombre_categoria)'}
-        VALUES ${parentId ? '(:parentId, :name)' : '(:name)'}
-      `;
-  
-      const binds = parentId ? { parentId, name } : { name };
-  
-      connection = await oracledb.getConnection(dbConfig);
-      await connection.execute(query, binds, { autoCommit: true });
-  
-      console.log('Categoría añadida correctamente');
-  
-      res.json({ success: true, message: 'Categoría añadida correctamente' });
-    } catch (error) {
-      console.error('Error al agregar la categoría:', error.message);
-      res.status(500).json({ success: false, error: 'Error al agregar la categoría' });
-    } finally {
-      // Cerrar la conexión
-      if (connection) {
-        try {
-          await connection.close();
-        } catch (closeError) {
-          console.error('Error al cerrar la conexión:', closeError);
-        }
+      // Deshacer la transacción en caso de error
+      if (connection) await connection.rollback();
+    } catch (rollbackError) {
+      console.error("Error al deshacer la transacción:", rollbackError.message);
+    }
+    res.status(500).json({ success: false, error: "Error al eliminar el producto" });
+  } finally {
+    // Cerrar la conexión
+    if (connection) {
+      try {
+        await connection.end();
+      } catch (closeError) {
+        console.error("Error al cerrar la conexión:", closeError.message);
       }
     }
-  });
+  }
+});
   
+async function getCategoryById(categoryId) {
+  let connection;
+  try {
+    connection = await mysql.createConnection(dbConfig);
+    const [rows] = await connection.execute(
+      `SELECT * FROM CATEGORIA_PRODUCTO WHERE id = ?`, [categoryId]
+    );
+    return rows.length > 0 ? rows[0] : null;
+  } catch (error) {
+    console.error('Error al obtener la categoría por ID:', error.message);
+    throw error;
+  } finally {
+    if (connection) {
+      try {
+        await connection.end();
+      } catch (closeError) {
+        console.error('Error al cerrar la conexión:', closeError.message);
+      }
+    }
+  }
+}
+  
+app.post('/addcategory', async (req, res) => {
+  let connection;
+
+  try {
+    const { name, parentId } = req.body;
+
+    // Verificar si parentId es válido
+    const parentCategory = parentId && await getCategoryById(parentId);
+    if (parentId && !parentCategory) {
+      throw new Error('El parentId proporcionado no es válido');
+    }
+
+    // Construir la consulta SQL
+    const query = `
+      INSERT INTO CATEGORIA_PRODUCTO
+      ${parentId ? '(id_categoria_padre, nombre_categoria)' : '(nombre_categoria)'}
+      VALUES ${parentId ? '(?, ?)' : '(?)'}
+    `;
+
+    // Valores para la consulta
+    const values = parentId ? [parentId, name] : [name];
+
+    connection = await mysql.createConnection(dbConfig);
+    await connection.execute(query, values);
+
+    console.log('Categoría añadida correctamente');
+
+    res.json({ success: true, message: 'Categoría añadida correctamente' });
+  } catch (error) {
+    console.error('Error al agregar la categoría:', error.message);
+    res.status(500).json({ success: false, error: 'Error al agregar la categoría' });
+  } finally {
+    // Cerrar la conexión
+    if (connection) {
+      try {
+        await connection.end();
+      } catch (closeError) {
+        console.error('Error al cerrar la conexión:', closeError.message);
+      }
+    }
+  }
+});
+
   
 
   //parte de Steven 
