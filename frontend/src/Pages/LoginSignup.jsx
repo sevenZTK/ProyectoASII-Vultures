@@ -7,13 +7,13 @@ const LoginSignup = () => {
   const [state, setState] = useState("Login");
   const [loginFormData, setLoginFormData] = useState({
     correo: "",
-    contraseña: ""
+    contrasena: ""
   });
   const [signupFormData, setSignupFormData] = useState({
     nombre: "",
     apellido: "",
     correo: "",
-    contraseña: "",
+    contrasena: "",
     telefono: "",
     direccion: "",
     estado: "",
@@ -93,7 +93,7 @@ const LoginSignup = () => {
       },
       body: JSON.stringify({
         correo: userData.correo,
-        contraseña: userData.contraseña,
+        contrasena: userData.contrasena,
       }),
     });
     const data = await response.json();
@@ -181,9 +181,9 @@ const LoginSignup = () => {
               />
               <input
                 type="password"
-                placeholder="Contraseña"
-                name="contraseña"
-                value={signupFormData.contraseña}
+                placeholder="contrasena"
+                name="contrasena"
+                value={signupFormData.contrasena}
                 onChange={signupChangeHandler}
               />
               <button onClick={signup}>
@@ -202,9 +202,9 @@ const LoginSignup = () => {
               />
               <input
                 type="password"
-                placeholder="Contraseña"
-                name="contraseña"
-                value={loginFormData.contraseña}
+                placeholder="contrasena"
+                name="contrasena"
+                value={loginFormData.contrasena}
                 onChange={loginChangeHandler}
               />
               <button onClick={login}>

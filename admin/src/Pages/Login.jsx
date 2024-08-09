@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 
 const Login = ({ onLogin }) => {
   const [correo, setCorreo] = useState('');
-  const [contraseña, setContraseña] = useState('');
+  const [contrasena, setcontrasena] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -12,7 +12,7 @@ const Login = ({ onLogin }) => {
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ correo, contraseña })
+        body: JSON.stringify({ correo, contrasena })
       });
       const data = await response.json();
       if (data.success) {
@@ -36,8 +36,8 @@ const Login = ({ onLogin }) => {
           <input type='email' id='correo' value={correo} onChange={(e) => setCorreo(e.target.value)} required />
         </div>
         <div>
-          <label htmlFor='contraseña'>Contraseña:</label>
-          <input type='password' id='contraseña' value={contraseña} onChange={(e) => setContraseña(e.target.value)} required />
+          <label htmlFor='contrasena'>contrasena:</label>
+          <input type='password' id='contrasena' value={contrasena} onChange={(e) => setcontrasena(e.target.value)} required />
         </div>
         <button type='submit'>Iniciar sesión</button>
       </form>

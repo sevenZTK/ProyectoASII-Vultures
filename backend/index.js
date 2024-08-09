@@ -21,7 +21,7 @@ app.use(express.json());
 const dbConfig = {
   host: 'localhost',
   user: 'tu_usuario',  
-  password: 'tu_contraseña',  
+  password: 'tu_contrasena',  
   database: 'tu_base_de_datos'  
 };
 
@@ -73,18 +73,18 @@ app.get("/", (req, res) => {
 
 app.post('/login', async (req, res) => {
   try {
-    const { correo, contraseña } = req.body;
+    const { correo, contrasena } = req.body;
 
-    // Verificar si el usuario existe y la contraseña es correcta
+    // Verificar si el usuario existe y la contrasena es correcta
     const connection = await mysql.createConnection(dbConfig);
     const [rows] = await connection.execute(
-      "SELECT id FROM USUARIO WHERE correo = ? AND contraseña = ?",
-      [correo, contraseña]
+      "SELECT id FROM USUARIO WHERE correo = ? AND contrasena = ?",
+      [correo, contrasena]
     );
     await connection.end();
 
     if (rows.length === 0) {
-      return res.status(401).json({ success: false, errors: "Correo o contraseña incorrectos." });
+      return res.status(401).json({ success: false, errors: "Correo o contrasena incorrectos." });
     }
     const userId = rows[0].id;
 
@@ -102,7 +102,7 @@ app.post('/signup', async (req, res) => {
   const connection = await mysql.createConnection(dbConfig);
 
   try {
-    const { nombre, apellido, correo, telefono, contraseña, id_pais, direccion, estado, ciudad, codigo_postal } = req.body;
+    const { nombre, apellido, correo, telefono, contrasena, id_pais, direccion, estado, ciudad, codigo_postal } = req.body;
 
     // Iniciar transacción
     await connection.beginTransaction();
@@ -119,8 +119,8 @@ app.post('/signup', async (req, res) => {
 
     // Insertar usuario
     const [resultUsuario] = await connection.execute(
-      "INSERT INTO USUARIO (id_tipo, nombre, apellido, correo, telefono, contraseña) VALUES (2, ?, ?, ?, ?, ?)",
-      [nombre, apellido, correo, telefono, contraseña]
+      "INSERT INTO USUARIO (id_tipo, nombre, apellido, correo, telefono, contrasena) VALUES (2, ?, ?, ?, ?, ?)",
+      [nombre, apellido, correo, telefono, contrasena]
     );
     const idUsuario = resultUsuario.insertId;
 
@@ -916,11 +916,11 @@ app.post('/addcategory', async (req, res) => {
   });
 
   app.get('/productos-recientes', async (req, res) => {
-    let pool;
+    let connection;
     try {
-      pool = await sql.connect(dbConfig);
-      const productosResult = await pool.request().query(
-        `SELECT TOP 8 p.id, 
+      connection = await mysql.createConnection(dbConfig);
+      const [productosResult] = await connection.execute(
+        `SELECT p.id, 
                 p.nombre_producto, 
                 p.descripcion_producto, 
                 p.imagen_producto1, 
@@ -928,161 +928,303 @@ app.post('/addcategory', async (req, res) => {
           FROM PRODUCTO p
           INNER JOIN CATEGORIA_PRODUCTO c ON p.id_categoria = c.id
           WHERE p.estado = 1
-          ORDER BY p.id DESC`
+          ORDER BY p.id DESC
+          LIMIT 8`
       );
-      const idsProductos = productosResult.recordset.map(row => row.id);
-      const preciosResult = await pool.request().query(
-        `SELECT id_producto, precio
-          FROM ITEM_PRODUCTO
-          WHERE id_producto IN (${idsProductos.join(",")})`
-      );
-      const preciosPorId = {};
-      for (const row of preciosResult.recordset) {
-        preciosPorId[row.id_producto] = row.precio;
+      const idsProductos = productosResult.map(row => row.id);
+      if (idsProductos.length > 0) {
+        const placeholders = idsProductos.map(() => '?').join(',');
+        const [preciosResult] = await connection.execute(
+          `SELECT id_producto, precio
+           FROM ITEM_PRODUCTO
+           WHERE id_producto IN (${placeholders})`,
+          [...idsProductos]
+        );
+        const preciosPorId = {};
+        for (const row of preciosResult) {
+          preciosPorId[row.id_producto] = row.precio;
+        }
+        const productosConPrecios = productosResult.map(row => ({
+          id: row.id,
+          nombre_producto: row.nombre_producto,
+          descripcion_producto: row.descripcion_producto,
+          imagen_producto1: row.imagen_producto1,
+          nombre_categoria: row.nombre_categoria,
+          precio: preciosPorId[row.id] || null
+        }));
+        res.json(productosConPrecios);
+      } else {
+        res.json([]);
       }
-      const productosConPrecios = productosResult.recordset.map(row => ({
-        id: row.id,
-        nombre_producto: row.nombre_producto,
-        descripcion_producto: row.descripcion_producto,
-        imagen_producto1: row.imagen_producto1,
-        nombre_categoria: row.nombre_categoria,
-        precio: preciosPorId[row.id] || null
-      }));
-      res.json(productosConPrecios);
     } catch (error) {
       console.error('Error al obtener productos recientes:', error);
       res.status(500).json({ error: 'Error al obtener productos recientes' });
     } finally {
-      if (pool) {
-        pool.close();
+      if (connection) {
+        await connection.end();
       }
     }
   });
 
   
   app.get("/firstOption/:idProducto", async (req, res) => {
-    let pool;
+    let connection;
+  
     try {
-      const idProducto = req.params.idProducto;
-      pool = await sql.connect(dbConfig);
-      const result = await pool.request()
-        .input('idProducto', sql.Int, idProducto)
-        .query(
-          `SELECT DISTINCT opv2.valor
-           FROM CONFIGURACION_PRODUCTO cp
-           INNER JOIN OPCION_VARIACION opv2 ON cp.id_opcion_variacion2 = opv2.id
-           WHERE cp.id_item_producto IN (
-             SELECT id
-             FROM ITEM_PRODUCTO
-             WHERE id_producto = @idProducto
-           )`
-        );
-      const firstOptions = result.recordset.map(row => row.valor);
-      res.json({ firstOptions });
+      connection = await mysql.createConnection(dbConfig);
+  
+      const [rows] = await connection.execute(
+        `SELECT ov.id, ov.valor, v.nombre AS variationType
+         FROM CONFIGURACION_PRODUCTO cp
+         INNER JOIN OPCION_VARIACION ov ON cp.id_opcion_variacion = ov.id
+         INNER JOIN VARIACION v ON ov.id_variacion = v.id
+         WHERE cp.id_item_producto IN (
+           SELECT id
+           FROM ITEM_PRODUCTO
+           WHERE id_producto = ?
+         )
+         ORDER BY ov.id_variacion`,
+        [req.params.idProducto]
+      );
+  
+      const options = rows.map(row => ({
+        id: row.id,
+        value: row.valor,
+        variationType: row.variationType
+      }));
+      
+      // Agrupar opciones por tipo de variación
+      const groupedOptions = options.reduce((acc, option) => {
+        if (!acc[option.variationType]) {
+          acc[option.variationType] = [];
+        }
+        
+        // Verificar si la opción ya existe en el grupo
+        const exists = acc[option.variationType].some(opt => opt.value === option.value);
+        if (!exists) {
+          acc[option.variationType].push(option);
+        }
+        
+        return acc;
+      }, {});
+  
+      // Extraer las claves (nombres de los tipos de variación)
+      const variationTypes = Object.keys(groupedOptions);
+      console.log("Tipos de Variacion:", variationTypes);
+      // Crear objetos para almacenar las opciones de variación agrupadas por tipo
+      let variationOptions1 = [];
+      let variationOptions2 = [];
+  
+      // Iterar sobre cada tipo de variación
+      variationTypes.forEach((variationType, index) => {
+        // Obtener las opciones de variación correspondientes a este tipo
+        const options = groupedOptions[variationType];
+  
+        // Asignar las opciones al primer grupo
+        if (index === 0) {
+          variationOptions1 = options;
+        }
+      });
+  
+      // Enviar las opciones agrupadas por tipo como parte de la respuesta JSON
+      res.json({ variationOptions1, variationTypes });
+      
     } catch (error) {
-      console.error('Error fetching first options:', error);
-      res.status(500).json({ error: "Error fetching first options" });
+      console.error(error);
+      res.status(500).json({ error: "Error fetching options" });
     } finally {
-      if (pool) {
-        pool.close();
+      if (connection) {
+        try {
+          await connection.end();
+        } catch (error) {
+          console.error(error);
+        }
       }
     }
   });
 
   app.get("/secondOption/:idOpcionVariacion/:productId", async (req, res) => {
-    let pool;
+    let connection;
+  
     try {
-      const { idOpcionVariacion, productId } = req.params;
-      pool = await sql.connect(dbConfig);
-      const result = await pool.request()
-        .input('idOpcionVariacion', sql.Int, idOpcionVariacion)
-        .input('productId', sql.Int, productId)
-        .query(
-          `SELECT DISTINCT opv.valor
-           FROM CONFIGURACION_PRODUCTO cp
-           INNER JOIN OPCION_VARIACION opv ON cp.id_opcion_variacion1 = opv.id
-           WHERE cp.id_opcion_variacion2 = @idOpcionVariacion
-           AND cp.id_item_producto IN (
-             SELECT id
-             FROM ITEM_PRODUCTO
-             WHERE id_producto = @productId
-           )`
-        );
-      const secondOptions = result.recordset.map(row => row.valor);
-      res.json({ secondOptions });
+      connection = await mysql.createConnection(dbConfig);
+  
+      const productId = parseInt(req.params.productId);
+      const idOpcionVariacion = parseInt(req.params.idOpcionVariacion);
+  
+      // Obtener las opciones de variación correspondientes al producto seleccionado
+      const [firstOptionRows] = await connection.execute(
+        `SELECT cp.id_opcion_variacion
+         FROM CONFIGURACION_PRODUCTO cp
+         INNER JOIN ITEM_PRODUCTO ip ON cp.id_item_producto = ip.id
+         WHERE ip.id_producto = ?`,
+        [productId]
+      );
+  
+      // Obtener los IDs de las opciones de variación
+      const usedVariationIds = firstOptionRows.map(row => row.id_opcion_variacion);
+  
+      // Filtrar las opciones de variación para excluir la opción seleccionada en el primer option list
+      const filteredVariationIds = usedVariationIds.filter(id => id !== idOpcionVariacion);
+  
+      // Si no hay IDs filtrados, devolver una respuesta vacía
+      if (filteredVariationIds.length === 0) {
+        return res.json({ variationOptions2: [] });
+      }
+  
+      // Obtener las opciones de variación correspondientes a los IDs filtrados
+      const [rows] = await connection.execute(
+        `SELECT ov.id, ov.valor, v.nombre AS variationType
+         FROM OPCION_VARIACION ov
+         INNER JOIN VARIACION v ON ov.id_variacion = v.id
+         WHERE ov.id IN (${filteredVariationIds.join(',')})`
+      );
+  
+      const options = rows.map(row => ({
+        id: row.id,
+        value: row.valor,
+        variationType: row.variationType
+      }));
+  
+      // Agrupar opciones por tipo de variación
+      const groupedOptions = options.reduce((acc, option) => {
+        if (!acc[option.variationType]) {
+          acc[option.variationType] = [];
+        }
+  
+        // Verificar si la opción ya existe en el grupo
+        const exists = acc[option.variationType].some(opt => opt.value === option.value);
+        if (!exists) {
+          acc[option.variationType].push(option);
+        }
+  
+        return acc;
+      }, {});
+  
+      // Extraer las claves (nombres de los tipos de variación)
+      const variationTypes = Object.keys(groupedOptions);
+  
+      // Crear objetos para almacenar las opciones de variación agrupadas por tipo
+      let variationOptions2 = [];
+  
+      // Iterar sobre cada tipo de variación
+      variationTypes.forEach(variationType => {
+        // Obtener las opciones de variación correspondientes a este tipo
+        const options = groupedOptions[variationType];
+  
+        // Asignar las opciones al segundo grupo
+        variationOptions2 = options;
+      });
+  
+      // Enviar las opciones agrupadas por tipo como parte de la respuesta JSON
+      res.json({ variationOptions2 });
+  
     } catch (error) {
-      console.error('Error fetching second options:', error);
-      res.status(500).json({ error: "Error fetching second options" });
+      console.error(error);
+      res.status(500).json({ error: "Error fetching options" });
     } finally {
-      if (pool) {
-        pool.close();
+      if (connection) {
+        try {
+          await connection.end();
+        } catch (error) {
+          console.error(error);
+        }
       }
     }
   });
 
   
   app.get("/checkAvailability/:idProducto/:idOpcionVariacion2/:idOpcionVariacion1", async (req, res) => {
-    let pool;
+    let connection;
+  
     try {
-      const { idProducto, idOpcionVariacion2, idOpcionVariacion1 } = req.params;
-      pool = await sql.connect(dbConfig);
-      const result = await pool.request()
-        .input('idProducto', sql.Int, idProducto)
-        .input('idOpcionVariacion2', sql.Int, idOpcionVariacion2)
-        .input('idOpcionVariacion1', sql.Int, idOpcionVariacion1)
-        .query(
-          `SELECT cp.id_item_producto, ip.cantidad_disp
-           FROM CONFIGURACION_PRODUCTO cp
-           INNER JOIN ITEM_PRODUCTO ip ON cp.id_item_producto = ip.id
-           WHERE ip.id_producto = @idProducto
-           AND cp.id_opcion_variacion2 = @idOpcionVariacion2
-           AND cp.id_opcion_variacion1 = @idOpcionVariacion1`
-        );
-      if (result.recordset.length > 0) {
-        res.json({ available: true, cantidad_disp: result.recordset[0].cantidad_disp });
+      connection = await mysql.createConnection(dbConfig);
+  
+      const idProducto = req.params.idProducto;
+      const idOpcionVariacion1 = req.params.idOpcionVariacion1;
+      const idOpcionVariacion2 = req.params.idOpcionVariacion2;
+  
+      const [rows] = await connection.execute(
+        `SELECT COUNT(*) AS count
+         FROM CONFIGURACION_PRODUCTO cp1
+         INNER JOIN CONFIGURACION_PRODUCTO cp2 ON cp1.id_item_producto = cp2.id_item_producto
+         INNER JOIN ITEM_PRODUCTO ip ON cp1.id_item_producto = ip.id
+         WHERE cp1.id_opcion_variacion = ?
+         AND cp2.id_opcion_variacion = ?
+         AND ip.id_producto = ?`,
+        [idOpcionVariacion1, idOpcionVariacion2, idProducto]
+      );
+  
+      const count = rows[0].count;
+  
+      if (count > 0) {
+        // Si existe un registro que cumple con las condiciones, la combinación está disponible
+        res.json({ available: true });
       } else {
-        res.json({ available: false, cantidad_disp: 0 });
+        // Si no existe ningún registro que cumpla las condiciones, la combinación está agotada
+        res.json({ available: false });
       }
+      
     } catch (error) {
-      console.error('Error checking availability:', error);
+      console.error(error);
       res.status(500).json({ error: "Error checking availability" });
     } finally {
-      if (pool) {
-        pool.close();
+      if (connection) {
+        try {
+          await connection.end();
+        } catch (error) {
+          console.error(error);
+        }
       }
     }
   });
 
   
   app.get('/cart/:userId', async (req, res) => {
-    let pool;
+    let connection;
+  
     try {
       const userId = req.params.userId;
-      pool = await sql.connect(dbConfig);
-      const cartResult = await pool.request()
-        .input('userId', sql.Int, userId)
-        .query(
-          `SELECT c.id_producto, c.cantidad, p.nombre_producto, p.descripcion_producto, p.imagen_producto1, ip.precio
-           FROM CARRITO c
-           INNER JOIN PRODUCTO p ON c.id_producto = p.id
-           INNER JOIN ITEM_PRODUCTO ip ON p.id = ip.id_producto
-           WHERE c.id_usuario = @userId`
-        );
-      const cartItems = cartResult.recordset.map(row => ({
-        id_producto: row.id_producto,
-        cantidad: row.cantidad,
-        nombre_producto: row.nombre_producto,
-        descripcion_producto: row.descripcion_producto,
-        imagen_producto1: row.imagen_producto1,
-        precio: row.precio
-      }));
-      res.json(cartItems);
+      connection = await mysql.createConnection(dbConfig);
+      
+      // Verificar si el usuario existe antes de ejecutar la consulta
+      const [userCheck] = await connection.execute(
+        `SELECT 1 FROM USUARIO WHERE id = ?`,
+        [userId]
+      );
+  
+      // Si el usuario no existe, devolver un mensaje apropiado
+      if (userCheck.length === 0) {
+        await connection.end();
+        return res.status(404).json({ error: 'Usuario no encontrado' });
+      }
+  
+      // Si el usuario existe, ejecutar la consulta para buscar el carrito
+      const [result] = await connection.execute(
+        `SELECT id FROM CARRITO WHERE id_usuario = ?`,
+        [userId]
+      );
+  
+      console.log("Usuario que ya tiene carrito: ", userId);
+      console.log("Carrito del Usuario que ya tiene carrito: ", result[0]);
+  
+      await connection.end();
+      
+      if (result.length > 0) {
+        res.json({ cartExists: true, cartId: result[0].id });
+      } else {
+        res.json({ cartExists: false });
+      }
     } catch (error) {
-      console.error('Error fetching cart items:', error);
-      res.status(500).json({ error: "Error fetching cart items" });
+      console.error('Error:', error);
+      res.status(500).json({ error: 'Internal Server Error' });
     } finally {
-      if (pool) {
-        pool.close();
+      if (connection) {
+        try {
+          await connection.end();
+        } catch (error) {
+          console.error(error);
+        }
       }
     }
   });
@@ -2018,6 +2160,9 @@ app.post("/saveOrder", async (req, res) => {
   try {
     connection = await mysql.createConnection(dbConfig);
 
+    // Iniciar transacción
+    await connection.beginTransaction();
+
     // Insertar la orden en la base de datos
     const insertOrderQuery = `
       INSERT INTO ORDEN (id_usuario, fecha_hora, id_metodo_pago, direccion_envio, metodo_envio, total_orden, estado_orden)
@@ -2034,7 +2179,9 @@ app.post("/saveOrder", async (req, res) => {
     const [cartItems] = await connection.execute(cartQuery, [userId2]);
 
     // Insertar los registros en ORDEN_ITEM
-    for (const [id_item_producto, cantidad] of cartItems) {
+    for (const item of cartItems) {
+      const { id_item_producto, cantidad } = item;
+
       const priceQuery = `SELECT precio FROM ITEM_PRODUCTO WHERE id = ?`;
       const [priceResult] = await connection.execute(priceQuery, [id_item_producto]);
       const precio = priceResult[0].precio;
@@ -2210,18 +2357,18 @@ app.put("/modifyorder/:id", async (req, res) => {
 
 app.post('/loginAdmin', async (req, res) => {
   try {
-    const { correo, contraseña } = req.body;
+    const { correo, contrasena } = req.body;
 
-    // Verificar si el usuario existe y la contraseña es correcta
+    // Verificar si el usuario existe y la contrasena es correcta
     const connection = await mysql.createConnection(dbConfig);
     const [resultUsuario] = await connection.execute(
-      "SELECT id, id_tipo FROM USUARIO WHERE correo = ? AND contraseña = ?",
-      [correo, contraseña]
+      "SELECT id, id_tipo FROM USUARIO WHERE correo = ? AND contrasena = ?",
+      [correo, contrasena]
     );
     await connection.end();
 
     if (resultUsuario.length === 0) {
-      return res.status(401).json({ success: false, errors: "Correo o contraseña incorrectos." });
+      return res.status(401).json({ success: false, errors: "Correo o contrasena incorrectos." });
     }
 
     const userId = resultUsuario[0].id;
