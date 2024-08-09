@@ -20,9 +20,9 @@ app.use(express.json());
 
 const dbConfig = {
   host: 'localhost',
-  user: 'tu_usuario',  
-  password: 'tu_contrasena',  
-  database: 'tu_base_de_datos'  
+  user: 'jawicho',  
+  password: 'jawicho123',  
+  database: 'shopper'  
 };
 
 async function initialize() {
@@ -687,12 +687,13 @@ app.post('/addcategory', async (req, res) => {
   //es con mssql configuracion de la bd a dbConfig
 
   app.get("/parentcategories", async (req, res) => {
+    let connection;
     try {
-      const pool = await sql.connect(dbConfig);
-      const result = await pool.request().query(
+      connection = await mysql.createConnection(dbConfig);
+      const [rows] = await connection.execute(
         `SELECT id, nombre_categoria FROM CATEGORIA_PRODUCTO`
       );
-      res.json(result.recordset.map(row => ({
+      res.json(rows.map(row => ({
         id: row.id,
         nombre_categoria: row.nombre_categoria
       })));
@@ -700,20 +701,22 @@ app.post('/addcategory', async (req, res) => {
       console.error('Error fetching parent categories:', error);
       res.status(500).json([]);
     } finally {
-      sql.close();
+      if (connection) {
+        await connection.end();
+      }
     }
   });
-
+  
   app.get("/itemproducts", async (req, res) => {
+    let connection;
     try {
       const productId = req.query.id_producto;
-      const pool = await sql.connect(dbConfig);
-      const result = await pool.request()
-        .input('productId', sql.Int, productId)
-        .query(
-          `SELECT id, cantidad_disp, precio, estado FROM ITEM_PRODUCTO WHERE id_producto = @productId`
-        );
-      res.json(result.recordset.map(row => ({
+      connection = await mysql.createConnection(dbConfig);
+      const [rows] = await connection.execute(
+        `SELECT id, cantidad_disp, precio, estado FROM ITEM_PRODUCTO WHERE id_producto = ?`,
+        [productId]
+      );
+      res.json(rows.map(row => ({
         id: row.id,
         cantidad_disp: row.cantidad_disp,
         precio: row.precio,
@@ -723,10 +726,12 @@ app.post('/addcategory', async (req, res) => {
       console.error('Error fetching item products:', error);
       res.status(500).json([]);
     } finally {
-      sql.close();
+      if (connection) {
+        await connection.end();
+      }
     }
   });
-
+  
   app.get("/searchproduct", async (req, res) => {
     let connection;
     try {
@@ -736,7 +741,7 @@ app.post('/addcategory', async (req, res) => {
         `SELECT p.id, p.nombre_producto, p.descripcion_producto, p.imagen_producto1, c.nombre_categoria
          FROM PRODUCTO p
          INNER JOIN CATEGORIA_PRODUCTO c ON p.id_categoria = c.id
-         WHERE LOWER(p.nombre_producto) LIKE ? AND p.estado = 1`, 
+         WHERE LOWER(p.nombre_producto) LIKE ? AND p.estado = 1`,
         [searchTerm]
       );
       res.json(rows.map(row => ({
@@ -765,7 +770,7 @@ app.post('/addcategory', async (req, res) => {
         `SELECT p.id, p.nombre_producto, p.descripcion_producto, p.imagen_producto1, c.nombre_categoria
          FROM PRODUCTO p
          INNER JOIN CATEGORIA_PRODUCTO c ON p.id_categoria = c.id
-         WHERE LOWER(p.nombre_producto) LIKE ? AND p.estado = 1`, 
+         WHERE LOWER(p.nombre_producto) LIKE ? AND p.estado = 1`,
         [searchTerm]
       );
       res.json(rows.map(row => ({
@@ -784,20 +789,17 @@ app.post('/addcategory', async (req, res) => {
       }
     }
   });
-
+  
   app.get("/itemproducts/:productId", async (req, res) => {
-    let pool;
+    let connection;
     try {
       const productId = req.params.productId;
-      pool = await sql.connect(dbConfig);
-      const result = await pool.request()
-        .input('productId', sql.Int, productId)
-        .query(
-          `SELECT id, cantidad_disp, precio, estado
-           FROM ITEM_PRODUCTO
-           WHERE id_producto = @productId`
-        );
-      res.json(result.recordset.map(row => ({
+      connection = await mysql.createConnection(dbConfig);
+      const [rows] = await connection.execute(
+        `SELECT id, cantidad_disp, precio, estado FROM ITEM_PRODUCTO WHERE id_producto = ?`,
+        [productId]
+      );
+      res.json(rows.map(row => ({
         id: row.id,
         cantidad_disp: row.cantidad_disp,
         precio: row.precio,
@@ -807,81 +809,72 @@ app.post('/addcategory', async (req, res) => {
       console.error('Error fetching item products:', error);
       res.status(500).json({ error: "Error al obtener los ITEM_PRODUCTO" });
     } finally {
-      if (pool) {
-        pool.close();
+      if (connection) {
+        await connection.end();
       }
     }
   });
-
+  
   app.get("/itemproducttitles/:productId", async (req, res) => {
-    let pool;
+    let connection;
     try {
       const productId = req.params.productId;
-      pool = await sql.connect(dbConfig);
-      const result = await pool.request()
-        .input('productId', sql.Int, productId)
-        .query(
-          `SELECT op.valor
-           FROM CONFIGURACION_PRODUCTO cp
-           INNER JOIN OPCION_VARIACION op ON cp.id_opcion_variacion = op.id
-           WHERE cp.id_item_producto IN (
-             SELECT id
-             FROM ITEM_PRODUCTO
-             WHERE id_producto = @productId
-           )`
-        );
-      const titles = result.recordset.map(row => row.valor);
+      connection = await mysql.createConnection(dbConfig);
+      const [rows] = await connection.execute(
+        `SELECT op.valor
+         FROM CONFIGURACION_PRODUCTO cp
+         INNER JOIN OPCION_VARIACION op ON cp.id_opcion_variacion = op.id
+         WHERE cp.id_item_producto IN (
+           SELECT id
+           FROM ITEM_PRODUCTO
+           WHERE id_producto = ?
+         )`,
+        [productId]
+      );
+      const titles = rows.map(row => row.valor);
       res.json({ titles });
     } catch (error) {
       console.error('Error fetching item product titles:', error);
       res.status(500).json({ error: "Error al obtener los títulos de los ITEM_PRODUCTO" });
     } finally {
-      if (pool) {
-        pool.close();
+      if (connection) {
+        await connection.end();
       }
     }
   });
-
   
   app.post('/updateitemproduct', async (req, res) => {
-    let pool;
+    let connection;
     try {
       console.log("Request received:", req.body);
       const { id, cantidad_disp, precio, estado } = req.body;
-      pool = await sql.connect(dbConfig);
+      connection = await mysql.createConnection(dbConfig);
       const query = `
-        BEGIN TRANSACTION;
         UPDATE ITEM_PRODUCTO
-        SET cantidad_disp = @cantidad_disp, precio = @precio, estado = @estado
-        WHERE id = @id;
-        COMMIT TRANSACTION;
+        SET cantidad_disp = ?, precio = ?, estado = ?
+        WHERE id = ?
       `;
-      await pool.request()
-        .input('id', sql.Int, id)
-        .input('cantidad_disp', sql.Int, cantidad_disp)
-        .input('precio', sql.Decimal(10, 2), precio)
-        .input('estado', sql.Int, estado)
-        .query(query);
+      await connection.execute(query, [cantidad_disp, precio, estado, id]);
       console.log("Item updated successfully");
       res.json({ success: true, message: '¡Item actualizado exitosamente!' });
     } catch (error) {
       console.error('Error al actualizar el item:', error);
       res.status(500).json({ success: false, error: 'Error al actualizar el item' });
     } finally {
-      if (pool) {
-        pool.close();
+      if (connection) {
+        await connection.end();
       }
     }
   });
-
   
   app.get("/parentcategoriesNav", async (req, res) => {
+    let connection;
     try {
-      const pool = await sql.connect(dbConfig);
-      const result = await pool.request().query(
+      connection = await mysql.createConnection(dbConfig);
+      const [rows] = await connection.execute(
         `SELECT id, nombre_categoria FROM CATEGORIA_PRODUCTO WHERE id_categoria_padre IS NULL`
       );
-      res.json(result.recordset.map(row => ({
+      res.json(rows.map(row => ({
         id: row.id,
         nombre_categoria: row.nombre_categoria
       })));
@@ -889,21 +882,22 @@ app.post('/addcategory', async (req, res) => {
       console.error('Error fetching parent categories:', error);
       res.status(500).json([]);
     } finally {
-      sql.close();
+      if (connection) {
+        await connection.end();
+      }
     }
   });
   
-
   app.get("/SubCategories/:categoryId", async (req, res) => {
-    const { categoryId } = req.params;
+    let connection;
     try {
-      const pool = await sql.connect(dbConfig);
-      const result = await pool.request()
-        .input('categoryId', sql.Int, categoryId)
-        .query(
-          `SELECT id, nombre_categoria FROM CATEGORIA_PRODUCTO WHERE id_categoria_padre = @categoryId`
-        );
-      res.json(result.recordset.map(row => ({
+      const { categoryId } = req.params;
+      connection = await mysql.createConnection(dbConfig);
+      const [rows] = await connection.execute(
+        `SELECT id, nombre_categoria FROM CATEGORIA_PRODUCTO WHERE id_categoria_padre = ?`,
+        [categoryId]
+      );
+      res.json(rows.map(row => ({
         id: row.id,
         nombre_categoria: row.nombre_categoria
       })));
@@ -911,10 +905,12 @@ app.post('/addcategory', async (req, res) => {
       console.error('Error fetching subcategories:', error);
       res.status(500).json([]);
     } finally {
-      sql.close();
+      if (connection) {
+        await connection.end();
+      }
     }
   });
-
+  
   app.get('/productos-recientes', async (req, res) => {
     let connection;
     try {
@@ -965,7 +961,7 @@ app.post('/addcategory', async (req, res) => {
       }
     }
   });
-
+  
   
   app.get("/firstOption/:idProducto", async (req, res) => {
     let connection;
@@ -1042,7 +1038,7 @@ app.post('/addcategory', async (req, res) => {
       }
     }
   });
-
+  
   app.get("/secondOption/:idOpcionVariacion/:productId", async (req, res) => {
     let connection;
   
@@ -1132,7 +1128,6 @@ app.post('/addcategory', async (req, res) => {
       }
     }
   });
-
   
   app.get("/checkAvailability/:idProducto/:idOpcionVariacion2/:idOpcionVariacion1", async (req, res) => {
     let connection;
@@ -1178,7 +1173,6 @@ app.post('/addcategory', async (req, res) => {
       }
     }
   });
-
   
   app.get('/cart/:userId', async (req, res) => {
     let connection;
@@ -1228,6 +1222,7 @@ app.post('/addcategory', async (req, res) => {
       }
     }
   });
+  
   
 
 
@@ -2271,6 +2266,7 @@ app.post("/saveOrder", async (req, res) => {
   }
 });
 
+
 app.get("/allordenes", async (req, res) => {
   try {
     const connection = await mysql.createConnection(dbConfig);
@@ -2410,6 +2406,97 @@ app.post('/obtenerPrecio', async (req, res) => {
     console.error("Error al obtener el precio del producto:", error);
     res.status(500).json({ success: false, errors: "Error en el servidor al obtener el precio del producto." });
   }
+});
+
+app.post("/addadmin", async (req, res) => {
+  const newUserData = {
+    nombre: req.body.nombre,
+    apellido: req.body.apellido,
+    correo: req.body.correo,
+    telefono: req.body.telefono,
+    contrasena: req.body.contrasena,
+    id_tipo: 1, // Tipo de usuario fijo
+  };
+
+  let connection;
+  try {
+    connection = await mysql.createConnection(dbConfig);
+
+    // Insertar el usuario
+    const queryUser = `
+      INSERT INTO USUARIO (nombre, apellido, correo, telefono, contrasena, id_tipo) 
+      VALUES (?, ?, ?, ?, ?, ?)`;
+    await connection.execute(queryUser, [
+      newUserData.nombre,
+      newUserData.apellido,
+      newUserData.correo,
+      newUserData.telefono,
+      newUserData.contrasena,
+      newUserData.id_tipo,
+    ]);
+
+    console.log("Usuario agregado correctamente");
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error al agregar el usuario:", error);
+    res.status(500).json({ success: false, error: "Error al agregar el usuario" });
+  } finally {
+    if (connection) {
+      try {
+        await connection.end();
+      } catch (closeError) {
+        console.error("Error al cerrar la conexión:", closeError);
+      }
+    }
+  }
+});
+
+app.get("/searchAdmin", async (req, res) => {
+  let connection;
+  try {
+    // Obtener el término de búsqueda y formatearlo para la búsqueda SQL
+    const searchTerm = req.query.search ? `%${req.query.search.toLowerCase()}%` : "%";
+    
+    connection = await mysql.createConnection(dbConfig);
+    
+    // Consulta SQL modificada para buscar por nombre o apellido
+    const query = `
+      SELECT id, nombre, apellido, correo, telefono
+      FROM USUARIO
+      WHERE LOWER(nombre) LIKE ? OR LOWER(apellido) LIKE ?`;
+    
+    // Ejecutar la consulta con los parámetros de búsqueda
+    const [rows] = await connection.execute(query, [searchTerm, searchTerm]);
+
+    // Responder con los datos obtenidos
+    res.json(rows.map(row => ({
+      id: row.id,
+      nombre: row.nombre,
+      apellido: row.apellido,
+      correo: row.correo,
+      telefono: row.telefono
+    })));
+  } catch (error) {
+    console.error('Error searching usuarios:', error);
+    res.status(500).json([]);
+  } finally {
+    if (connection) {
+      try {
+        await connection.end();
+      } catch (err) {
+        console.error('Error closing connection:', err);
+      }
+    }
+  }
+});
+
+app.post('/verAdmins', async (req, res) => {
+  
+});
+
+app.delete('/eliminarAdmin', async (req, res) => {
+  
 });
 
 
