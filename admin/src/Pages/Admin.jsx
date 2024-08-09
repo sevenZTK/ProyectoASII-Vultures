@@ -7,6 +7,8 @@ import ListProduct from "../Components/ListProduct/ListProduct";
 import AddPromociones from "../Components/AddPromociones/AddPromociones";
 import ListPromociones from "../Components/ListPromociones/ListPromociones";
 import ListOrdenes from "../Components/ListOrdenes/ListOrdenes";
+import AddAdmin from "../Components/AddAdmin/AddAdmin";
+import ListAdmin from "../Components/ListAdmin/ListAdmin";
 
 const Admin = () => {
 
@@ -19,6 +21,8 @@ const Admin = () => {
         <Route path="/addpromociones" element={<AddPromociones />} />
         <Route path="/listpromociones" element={<ListPromociones />} />
         <Route path="/listordenes" element={<ListOrdenes />} />
+        <Route path="/addadmin" element={<AddAdmin />} />
+        <Route path="/listadmin" element={<ListAdmin />} />
       </Routes>
     </div>
   );
