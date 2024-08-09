@@ -20,8 +20,8 @@ app.use(express.json());
 
 const dbConfig = {
   host: 'localhost',
-  user: 'jawicho',  
-  password: 'jawicho123',  
+  user: 'usuario',  
+  password: 'password',  
   database: 'shopper'  
 };
 
