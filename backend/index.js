@@ -2496,7 +2496,38 @@ app.post('/verAdmins', async (req, res) => {
 });
 
 app.delete('/eliminarAdmin', async (req, res) => {
-  
+  const { id } = req.body;
+
+  if (!id) {
+    return res.status(400).json({ message: "El ID del administrador es requerido" });
+  }
+
+  let connection;
+  try {
+    // Establecer conexión a la base de datos
+    connection = await mysql.createConnection({ /* tus credenciales de conexión */ });
+
+    // Ejecutar la consulta para eliminar al administrador
+    const [result] = await connection.execute('DELETE FROM admins WHERE id = ?', [id]);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: "Administrador no encontrado" });
+    }
+
+    // Responder con un mensaje de éxito
+    res.json({ message: "Administrador eliminado exitosamente" });
+  } catch (error) {
+    console.error('Error al eliminar administrador:', error);
+    res.status(500).json({ message: "Error al eliminar administrador" });
+  } finally {
+    if (connection) {
+      try {
+        await connection.end();
+      } catch (err) {
+        console.error('Error cerrando la conexión:', err);
+      }
+    }
+  }
 });
 
 
