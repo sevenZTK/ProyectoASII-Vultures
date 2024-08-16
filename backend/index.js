@@ -2352,30 +2352,32 @@ app.put("/modifyorder/:id", async (req, res) => {
 });
 
 app.post('/loginAdmin', async (req, res) => {
-  try {
-    const { correo, contrasena } = req.body;
+  const { correo, contrasena } = req.body;
 
-    // Verificar si el usuario existe y la contrasena es correcta
+  try {
     const connection = await mysql.createConnection(dbConfig);
     const [resultUsuario] = await connection.execute(
-      "SELECT id, id_tipo FROM USUARIO WHERE correo = ? AND contrasena = ?",
-      [correo, contrasena]
+      "SELECT id, id_tipo, contrasena FROM USUARIO WHERE correo = ?",
+      [correo]
     );
     await connection.end();
 
     if (resultUsuario.length === 0) {
-      return res.status(401).json({ success: false, errors: "Correo o contrasena incorrectos." });
+      return res.status(401).json({ success: false, errors: "Correo o contraseña incorrectos." });
     }
 
-    const userId = resultUsuario[0].id;
-    const userType = resultUsuario[0].id_tipo;
+    const user = resultUsuario[0];
+    const passwordMatch = await bcrypt.compare(contrasena, user.contrasena);
 
-    if (userType !== 1) {
+    if (!passwordMatch) {
+      return res.status(401).json({ success: false, errors: "Correo o contraseña incorrectos." });
+    }
+
+    if (user.id_tipo !== 1) {
       return res.status(403).json({ success: false, errors: "Usuario no autorizado para acceder a la página de administración." });
     }
 
-    // Si las credenciales son correctas y el usuario es administrador, se permite el acceso a la página de administración
-    res.status(200).json({ success: true, message: "Inicio de sesión exitoso.", userId });
+    res.status(200).json({ success: true, message: "Inicio de sesión exitoso.", userId: user.id });
   } catch (error) {
     console.error("Error en el inicio de sesión:", error);
     res.status(500).json({ success: false, errors: "Error en el servidor al iniciar sesión." });
@@ -2409,20 +2411,21 @@ app.post('/obtenerPrecio', async (req, res) => {
 });
 
 app.post("/addadmin", async (req, res) => {
-  const newUserData = {
-    nombre: req.body.nombre,
-    apellido: req.body.apellido,
-    correo: req.body.correo,
-    telefono: req.body.telefono,
-    contrasena: req.body.contrasena,
-    id_tipo: 1, // Tipo de usuario fijo
-  };
+  const { nombre, apellido, correo, telefono, contrasena } = req.body;
+  let connection; // Definir la variable aquí
 
-  let connection;
   try {
-    connection = await mysql.createConnection(dbConfig);
+    const hashedPassword = await bcrypt.hash(contrasena, saltRounds);
+    const newUserData = {
+      nombre,
+      apellido,
+      correo,
+      telefono,
+      contrasena: hashedPassword,
+      id_tipo: 1, // Tipo de usuario fijo
+    };
 
-    // Insertar el usuario
+    connection = await mysql.createConnection(dbConfig); // Asignar a la variable
     const queryUser = `
       INSERT INTO USUARIO (nombre, apellido, correo, telefono, contrasena, id_tipo) 
       VALUES (?, ?, ?, ?, ?, ?)`;
@@ -2436,7 +2439,6 @@ app.post("/addadmin", async (req, res) => {
     ]);
 
     console.log("Usuario agregado correctamente");
-
     res.json({ success: true });
   } catch (error) {
     console.error("Error al agregar el usuario:", error);
