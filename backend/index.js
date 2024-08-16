@@ -2456,6 +2456,34 @@ app.post("/addadmin", async (req, res) => {
   }
 });
 
+const updatePasswords = async () => {
+  const connection = await mysql.createConnection(dbConfig);
+
+  try {
+    // Obtener todos los usuarios con contraseñas en texto plano
+    const [users] = await connection.execute("SELECT id, contrasena FROM USUARIO WHERE id_tipo = 1");
+
+    for (const user of users) {
+      const hashedPassword = await bcrypt.hash(user.contrasena, 10);
+
+      // Actualizar el hash en la base de datos
+      await connection.execute(
+        "UPDATE USUARIO SET contrasena = ? WHERE id = ?",
+        [hashedPassword, user.id]
+      );
+    }
+
+    console.log("Contraseñas actualizadas correctamente.");
+  } catch (error) {
+    console.error("Error al actualizar las contraseñas:", error);
+  } finally {
+    await connection.end();
+  }
+};
+
+//Descomentar solo si hay contraseñas registradas sin cifrar.
+//updatePasswords();
+
 app.get("/searchAdmin", async (req, res) => {
   let connection;
   try {
