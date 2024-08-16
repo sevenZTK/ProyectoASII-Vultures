@@ -55,3 +55,19 @@
     height: 60px;
 }
 }
+
+.listusuarios-format-main {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr); /* Divides the container into 5 equal columns */
+  gap: 10px; /* Adds space between the columns */
+}
+
+.listusuarios-format {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+}
+
+p {
+  margin: 0;
+}

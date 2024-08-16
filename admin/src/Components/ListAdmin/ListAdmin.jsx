@@ -1,7 +1,5 @@
 import React, { useEffect, useState } from "react";
 import "./ListAdmin.css";
-import cross_icon from '../Assets/cross_icon.png';
-import editboton from '../Assets/edit-boton.png';
 
 const ListAdmin = () => {
   const [usuariosTipo1, setUsuariosTipo1] = useState([]);
@@ -16,13 +14,21 @@ const ListAdmin = () => {
       }
       const response = await fetch(url);
       const data = await response.json();
-      setUsuariosTipo1(data);
+  
+      // Verificar si la respuesta tiene éxito y contiene un array de admins
+      if (data.success && Array.isArray(data.admins)) {
+        setUsuariosTipo1(data.admins);
+      } else {
+        setUsuariosTipo1([]); // Si no hay admins, establecer un array vacío
+      }
     } catch (error) {
       console.error('Error fetching usuarios:', error);
+      setUsuariosTipo1([]); // En caso de error, establecer un array vacío
     }
   };
+  
 
-  // Cargar usuarios al montar el componente o al cambiar el término de búsqueda
+  // Ejecutar fetchUsuarios cuando el componente se monta y cuando cambia el término de búsqueda
   useEffect(() => {
     fetchUsuarios();
   }, [searchTerm]);
