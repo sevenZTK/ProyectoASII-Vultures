@@ -75,20 +75,25 @@ app.post('/login', async (req, res) => {
   try {
     const { correo, contrasena } = req.body;
 
-    // Verificar si el usuario existe y la contrasena es correcta
     const connection = await mysql.createConnection(dbConfig);
     const [rows] = await connection.execute(
-      "SELECT id FROM USUARIO WHERE correo = ? AND contrasena = ?",
-      [correo, contrasena]
+      "SELECT id, contrasena FROM USUARIO WHERE correo = ?",
+      [correo]
     );
     await connection.end();
 
     if (rows.length === 0) {
-      return res.status(401).json({ success: false, errors: "Correo o contrasena incorrectos." });
+      return res.status(401).json({ success: false, errors: "Correo o contraseña incorrectos." });
     }
-    const userId = rows[0].id;
 
-    // Si las credenciales son correctas, se permite el acceso a la página
+    const hashedPassword = rows[0].contrasena;
+    const passwordMatch = await bcrypt.compare(contrasena, hashedPassword);
+
+    if (!passwordMatch) {
+      return res.status(401).json({ success: false, errors: "Correo o contraseña incorrectos." });
+    }
+
+    const userId = rows[0].id;
     res.status(200).json({ success: true, message: "Inicio de sesión exitoso.", userId });
   } catch (error) {
     console.error("Error en el inicio de sesión:", error);
@@ -98,16 +103,15 @@ app.post('/login', async (req, res) => {
 
 
 
+
 app.post('/signup', async (req, res) => {
   const connection = await mysql.createConnection(dbConfig);
 
   try {
     const { nombre, apellido, correo, telefono, contrasena, id_pais, direccion, estado, ciudad, codigo_postal } = req.body;
 
-    // Iniciar transacción
     await connection.beginTransaction();
 
-    // Verificar si el usuario ya está registrado
     const [resultUsuarioExistente] = await connection.execute(
       "SELECT * FROM USUARIO WHERE correo = ?",
       [correo]
@@ -117,35 +121,33 @@ app.post('/signup', async (req, res) => {
       return res.status(400).json({ success: false, errors: "Usuario ya registrado, inicia sesión." });
     }
 
-    // Insertar usuario
+    const hashedPassword = await bcrypt.hash(contrasena, saltRounds);
+
     const [resultUsuario] = await connection.execute(
       "INSERT INTO USUARIO (id_tipo, nombre, apellido, correo, telefono, contrasena) VALUES (2, ?, ?, ?, ?, ?)",
-      [nombre, apellido, correo, telefono, contrasena]
+      [nombre, apellido, correo, telefono, hashedPassword]
     );
     const idUsuario = resultUsuario.insertId;
 
-    // Insertar dirección
     const [resultDireccion] = await connection.execute(
       "INSERT INTO DIRECCION (direccion, estado, ciudad, codigo_postal, id_pais) VALUES (?, ?, ?, ?, ?)",
       [direccion, estado, ciudad, codigo_postal, id_pais]
     );
     const idDireccion = resultDireccion.insertId;
 
-    // Asociar dirección con usuario
     await connection.execute(
       "INSERT INTO DIRECCION_USUARIO (id_usuario, id_direccion) VALUES (?, ?)",
       [idUsuario, idDireccion]
     );
 
-    await connection.commit(); // Confirmar transacción
-
+    await connection.commit();
     res.status(200).json({ success: true, message: "Usuario registrado exitosamente." });
   } catch (error) {
-    await connection.rollback(); // Revertir transacción en caso de error
+    await connection.rollback();
     console.error("Error en el registro de usuario:", error);
     res.status(500).json({ success: false, errors: "Error en el servidor al registrar usuario." });
   } finally {
-    await connection.end(); // Cerrar conexión
+    await connection.end();
   }
 });
 
