@@ -5,7 +5,8 @@ const jwt = require("jsonwebtoken");
 const multer = require("multer");
 const cors = require("cors");
 const mysql = require('mysql2/promise');
-
+const bcrypt = require('bcrypt');
+const saltRounds = 10;
 
 
 
