@@ -2455,31 +2455,33 @@ app.post("/addadmin", async (req, res) => {
 app.get("/searchAdmin", async (req, res) => {
   let connection;
   try {
-    // Obtener el término de búsqueda y formatearlo para la búsqueda SQL
+    // Obtener el término de búsqueda y formatearlo
     const searchTerm = req.query.search ? `%${req.query.search.toLowerCase()}%` : "%";
-    
+
     connection = await mysql.createConnection(dbConfig);
-    
-    // Consulta SQL modificada para buscar por nombre o apellido
+
+    // Consulta SQL para buscar por nombre o apellido
     const query = `
       SELECT id, nombre, apellido, correo, telefono
       FROM USUARIO
       WHERE LOWER(nombre) LIKE ? OR LOWER(apellido) LIKE ?`;
-    
-    // Ejecutar la consulta con los parámetros de búsqueda
+
     const [rows] = await connection.execute(query, [searchTerm, searchTerm]);
 
-    // Responder con los datos obtenidos
-    res.json(rows.map(row => ({
-      id: row.id,
-      nombre: row.nombre,
-      apellido: row.apellido,
-      correo: row.correo,
-      telefono: row.telefono
-    })));
+    // Responder con los datos formateados
+    res.json({
+      success: true,
+      admins: rows.map(row => ({
+        id: row.id,
+        nombre: row.nombre,
+        apellido: row.apellido,
+        correo: row.correo,
+        telefono: row.telefono
+      }))
+    });
   } catch (error) {
     console.error('Error searching usuarios:', error);
-    res.status(500).json([]);
+    res.status(500).json({ success: false, error: "Error al buscar usuarios" });
   } finally {
     if (connection) {
       try {
