@@ -2493,8 +2493,33 @@ app.get("/searchAdmin", async (req, res) => {
   }
 });
 
-app.post('/verAdmins', async (req, res) => {
-  
+app.get('/verAdmins', async (req, res) => {
+  let connection;
+
+  try {
+    // Establecer la conexión a la base de datos
+    connection = await mysql.createConnection(dbConfig);
+
+    // Ejecutar la consulta para obtener los administradores con todos los campos necesarios
+    const [rows] = await connection.execute(
+      "SELECT id, nombre, apellido, correo, telefono FROM USUARIO WHERE id_tipo = 1"
+    );
+
+    // Devolver los resultados como JSON
+    res.status(200).json({ success: true, admins: rows });
+
+  } catch (error) {
+    console.error("Error al obtener administradores:", error);
+    res.status(500).json({ success: false, error: "Error en el servidor al obtener administradores." });
+  } finally {
+    if (connection) {
+      try {
+        await connection.end();
+      } catch (err) {
+        console.error('Error al cerrar la conexión:', err);
+      }
+    }
+  }
 });
 
 app.delete('/eliminarAdmin', async (req, res) => {
