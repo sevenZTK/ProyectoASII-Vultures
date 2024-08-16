@@ -37,6 +37,18 @@ const Sidebar = () => {
           <p>Ver Ordenes</p>
         </div>
       </Link>
+      <Link to='/addAdmin' style={{ textDecoration: 'none' }}>
+        <div className="sidebar-item">
+          <img src={add_product_icon} alt="" />
+          <p>Agregar Admins</p>
+        </div>
+      </Link>
+      <Link to='/listAdmin' style={{ textDecoration: 'none' }}>
+        <div className="sidebar-item">
+          <img src={list_product_icon} alt="" />
+          <p>Ver Admins</p>
+        </div>
+      </Link>
     </div>
   )
 }
