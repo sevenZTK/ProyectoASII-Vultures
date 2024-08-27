@@ -20,10 +20,10 @@ app.use(express.json());
 
 
 const dbConfig = {
-  host: 'localhost',
-  user: 'usuario',  
-  password: 'password',  
-  database: 'shopper'  
+  host: 'bk6pvaiu18zrjaoxcqw2-mysql.services.clever-cloud.com',
+  user: 'uymppjtajyg4t5aw',  
+  password: 'qHBIWAdzHGg3EoiDKTW5',  
+  database: 'bk6pvaiu18zrjaoxcqw2'  
 };
 
 async function initialize() {
