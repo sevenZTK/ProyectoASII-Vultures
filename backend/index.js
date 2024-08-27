@@ -56,7 +56,7 @@ app.post('/upload', (req, res) => {
       return res.status(400).json({ success: 0, message: 'Error al cargar imágenes' });
     }
 
-    const imageUrls = req.files.map((file) => `http://localhost:4000/images/${file.filename}`);
+    const imageUrls = req.files.map((file) => `https://proyectoasii-vultures.onrender.com/images/${file.filename}`);
 
     res.json({
       success: 1,

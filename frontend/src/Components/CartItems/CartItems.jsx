@@ -46,7 +46,7 @@ const [expiryDateError, setExpiryDateError] = useState("");
 
   const fetchPaymentMethods = async () => {
     try {
-      const response = await fetch(`http://localhost:4000/paymentMethods/${userId}`);
+      const response = await fetch(`https://proyectoasii-vultures.onrender.com/paymentMethods/${userId}`);
       const data = await response.json();
       setPaymentMethods(data);
     } catch (error) {
@@ -67,22 +67,22 @@ const [expiryDateError, setExpiryDateError] = useState("");
   useEffect(() => {
     
     if (userId && userId !== "0") {
-      fetch(`http://localhost:4000/cartItems/${userId}`)
+      fetch(`https://proyectoasii-vultures.onrender.com/cartItems/${userId}`)
         .then((res) => res.json())
         .then((data) => {
           setDisplayedItems(data);
         });
-        fetch(`http://localhost:4000/userAddresses/${userId}`)
+        fetch(`https://proyectoasii-vultures.onrender.com/userAddresses/${userId}`)
         .then((res) => res.json())
         .then((data) => {
           setAddresses(data);
         });
-        fetch(`http://localhost:4000/shippingMethods`)
+        fetch(`https://proyectoasii-vultures.onrender.com/shippingMethods`)
         .then((res) => res.json())
         .then((data) => {
           setShippingMethods(data);
         });
-        fetch(`http://localhost:4000/countries`)
+        fetch(`https://proyectoasii-vultures.onrender.com/countries`)
         .then((res) => res.json())
         .then((data) => {
           setCountries(data);
@@ -107,7 +107,7 @@ const [expiryDateError, setExpiryDateError] = useState("");
 
   const handleSaveAddress = () => {
     // Guardar la nueva dirección en la base de datos
-    fetch(`http://localhost:4000/addAddress`, {
+    fetch(`https://proyectoasii-vultures.onrender.com/addAddress`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -146,7 +146,7 @@ const [expiryDateError, setExpiryDateError] = useState("");
   const handleCheckout = async () => {
     
     try {
-      const response = await fetch('http://localhost:4000/checkout', {
+      const response = await fetch('https://proyectoasii-vultures.onrender.com/checkout', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -181,7 +181,7 @@ const [expiryDateError, setExpiryDateError] = useState("");
             const selectedAddress = addressCH[0];
         console.log(userId, selectedAddress, selectedPaymentMethod, selectedShippingMethod, totalCompra);
             // Enviar los datos al backend
-            const response = await fetch('http://localhost:4000/saveOrder', {
+            const response = await fetch('https://proyectoasii-vultures.onrender.com/saveOrder', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json'
@@ -230,7 +230,7 @@ const [expiryDateError, setExpiryDateError] = useState("");
     );
 
     // Update quantity on the server
-    fetch(`http://localhost:4000/cartItems/updateQuantity/${itemId}`, {
+    fetch(`https://proyectoasii-vultures.onrender.com/cartItems/updateQuantity/${itemId}`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
@@ -249,7 +249,7 @@ const [expiryDateError, setExpiryDateError] = useState("");
     );
 
     // Update quantity on the server
-    fetch(`http://localhost:4000/cartItems/updateQuantity/${itemId}`, {
+    fetch(`https://proyectoasii-vultures.onrender.com/cartItems/updateQuantity/${itemId}`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
@@ -293,7 +293,7 @@ const [expiryDateError, setExpiryDateError] = useState("");
 
   const handleRemoveItem = async (userId, itemId) => {
     try {
-      const response = await fetch('http://localhost:4000/removeCartItem', {
+      const response = await fetch('https://proyectoasii-vultures.onrender.com/removeCartItem', {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json'
@@ -348,7 +348,7 @@ const [expiryDateError, setExpiryDateError] = useState("");
     setPaymentCH([event.target.value]);
     console.log(paymentCH);
     // Llamar al backend para obtener el saldo asociado
-    fetch('http://localhost:4000/checkoutSaldo', {
+    fetch('https://proyectoasii-vultures.onrender.com/checkoutSaldo', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -420,7 +420,7 @@ const [expiryDateError, setExpiryDateError] = useState("");
   
       // Realizar la consulta a la base de datos
       try {
-        const response = await fetch('http://localhost:4000/checkCreditCard', {
+        const response = await fetch('https://proyectoasii-vultures.onrender.com/checkCreditCard', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -433,7 +433,7 @@ const [expiryDateError, setExpiryDateError] = useState("");
         if (data.exists) {
           // Insertar los datos del método de pago en la base de datos
           try {
-            const saveResponse = await fetch('http://localhost:4000/savePaymentMethod', {
+            const saveResponse = await fetch('https://proyectoasii-vultures.onrender.com/savePaymentMethod', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json'

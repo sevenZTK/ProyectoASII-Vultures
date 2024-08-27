@@ -19,7 +19,7 @@ const AddPromociones = () => {
 
   const fetchCategorias = async () => {
     try {
-      const response = await fetch("http://localhost:4000/categories");
+      const response = await fetch("https://proyectoasii-vultures.onrender.com/categories");
       const data = await response.json();
       setCategorias(data);
     } catch (error) {
@@ -66,7 +66,7 @@ const AddPromociones = () => {
           categorias: [categoriaId] // Se envía solo una categoría por cada iteración
         };
 
-        const response = await fetch("http://localhost:4000/addpromotions", {
+        const response = await fetch("https://proyectoasii-vultures.onrender.com/addpromotions", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

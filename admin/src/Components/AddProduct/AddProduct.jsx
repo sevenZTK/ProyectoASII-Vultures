@@ -39,7 +39,7 @@ const AddProduct = () => {
 
   const fetchParentCategories = async () => {
     try {
-      const response = await fetch('http://localhost:4000/parentcategories');
+      const response = await fetch('https://proyectoasii-vultures.onrender.com/parentcategories');
       const data = await response.json();
       setParentCategories(data);
     } catch (error) {
@@ -49,7 +49,7 @@ const AddProduct = () => {
 
   const fetchCategorias = async () => {
     try {
-      const response = await fetch('http://localhost:4000/categories');
+      const response = await fetch('https://proyectoasii-vultures.onrender.com/categories');
       const data = await response.json();
       setCategorias(data);
     } catch (error) {
@@ -59,7 +59,7 @@ const AddProduct = () => {
 
   const fetchVariaciones = async () => {
     try {
-      const response = await fetch('http://localhost:4000/variations');
+      const response = await fetch('https://proyectoasii-vultures.onrender.com/variations');
       const data = await response.json();
       setVariaciones(data);
     } catch (error) {
@@ -69,7 +69,7 @@ const AddProduct = () => {
 
   const fetchOpcionesVariacion = async (idVariacion) => {
     try {
-      const response = await fetch(`http://localhost:4000/options?idVariacion=${idVariacion}`);
+      const response = await fetch(`https://proyectoasii-vultures.onrender.com/options?idVariacion=${idVariacion}`);
       const data = await response.json();
       setOpcionesVariacion(data);
     } catch (error) {
@@ -79,7 +79,7 @@ const AddProduct = () => {
 
   const fetchVariaciones1 = async () => {
     try {
-      const response = await fetch('http://localhost:4000/variations');
+      const response = await fetch('https://proyectoasii-vultures.onrender.com/variations');
       const data = await response.json();
       setVariaciones1(data);
     } catch (error) {
@@ -89,7 +89,7 @@ const AddProduct = () => {
 
   const fetchOpcionesVariacion1 = async (idVariacion) => {
     try {
-      const response = await fetch(`http://localhost:4000/options?idVariacion=${idVariacion}`);
+      const response = await fetch(`https://proyectoasii-vultures.onrender.com/options?idVariacion=${idVariacion}`);
       const data = await response.json();
       setOpcionesVariacion1(data);
     } catch (error) {
@@ -99,7 +99,7 @@ const AddProduct = () => {
 
   const fetchProductos = async (searchTerm) => {
     try {
-      const response = await fetch(`http://localhost:4000/productos?search=${searchTerm}`);
+      const response = await fetch(`https://proyectoasii-vultures.onrender.com/productos?search=${searchTerm}`);
       const data = await response.json();
       setProductOptions(data);
     } catch (error) {
@@ -168,7 +168,7 @@ const AddProduct = () => {
 
   const handleAddCategory = async () => {
     try {
-      const response = await fetch('http://localhost:4000/addcategory', {
+      const response = await fetch('https://proyectoasii-vultures.onrender.com/addcategory', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -199,7 +199,7 @@ const AddProduct = () => {
         formData.append(`product`, image); // Cambiado a 'product' para que coincida con el nombre del campo esperado por multer
       });
   
-      const response = await fetch('http://localhost:4000/upload', {
+      const response = await fetch('https://proyectoasii-vultures.onrender.com/upload', {
         method: 'POST',
         body: formData,
       });
@@ -214,7 +214,7 @@ const AddProduct = () => {
           imagen_producto3: dataObj.image_urls[2], // Corregido para acceder a image_urls en lugar de image_url3
         };
   
-        const addProductResponse = await fetch('http://localhost:4000/addproduct', {
+        const addProductResponse = await fetch('https://proyectoasii-vultures.onrender.com/addproduct', {
           method: 'POST',
           headers: {
             Accept: 'application/json',

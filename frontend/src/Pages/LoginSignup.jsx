@@ -24,7 +24,7 @@ const LoginSignup = () => {
   const [countries, setCountries] = useState([]);
 
   useEffect(() => {
-    fetch("http://localhost:4000/countries")
+    fetch("https://proyectoasii-vultures.onrender.com/countries")
       .then((resp) => resp.json())
       .then((data) => {
         setCountries(data);
@@ -43,7 +43,7 @@ const LoginSignup = () => {
   };
 
   const login = async () => {
-    const response = await fetch("http://localhost:4000/login", {
+    const response = await fetch("https://proyectoasii-vultures.onrender.com/login", {
       method: "POST",
       headers: {
         Accept: "application/json",
@@ -64,7 +64,7 @@ const LoginSignup = () => {
   };
 
   const signup = async () => {
-    const response = await fetch("http://localhost:4000/signup", {
+    const response = await fetch("https://proyectoasii-vultures.onrender.com/signup", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -85,7 +85,7 @@ const LoginSignup = () => {
   };
   
   const loginAfterSignup = async (userData) => {
-    const response = await fetch("http://localhost:4000/login", {
+    const response = await fetch("https://proyectoasii-vultures.onrender.com/login", {
       method: "POST",
       headers: {
         Accept: "application/json",

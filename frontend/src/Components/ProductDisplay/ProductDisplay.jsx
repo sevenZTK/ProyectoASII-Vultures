@@ -37,7 +37,7 @@ const ProductDisplay = (props) => {
 
   useEffect(() => {
     // Fetch para obtener las opciones del primer option list
-    fetch(`http://localhost:4000/firstOption/${props.id}`)
+    fetch(`https://proyectoasii-vultures.onrender.com/firstOption/${props.id}`)
       .then(response => response.json())
       .then(data => {
         setVariationOptions1(data.variationOptions1 || []);
@@ -51,7 +51,7 @@ const ProductDisplay = (props) => {
     // Si se selecciona una opción en el primer option list, realizar el fetch para obtener las opciones del segundo option list
     if (selectedOption1) {
       if (tipos.length > 1) {
-        fetch(`http://localhost:4000/secondOption/${selectedOption1}/${props.id}`)
+        fetch(`https://proyectoasii-vultures.onrender.com/secondOption/${selectedOption1}/${props.id}`)
           .then(response => response.json())
           .then(data => {
             setVariationOptions2(data.variationOptions2 || []);
@@ -60,7 +60,7 @@ const ProductDisplay = (props) => {
       } else {
         // Si no hay opciones para el segundo select, obtener el precio directamente
         const opcion2 = "0";
-        fetch(`http://localhost:4000/configurationProduct/${selectedOption1}/${opcion2}/${props.id}`)
+        fetch(`https://proyectoasii-vultures.onrender.com/configurationProduct/${selectedOption1}/${opcion2}/${props.id}`)
           .then(response => response.json())
           .then(data => {
             setPrice(data.price); // Establecer el precio del producto
@@ -88,7 +88,7 @@ const ProductDisplay = (props) => {
     setSelectedOption2(selectedValue);
 
     // Verificar disponibilidad utilizando el nuevo endpoint en el servidor
-    fetch(`http://localhost:4000/checkAvailability/${props.id}/${selectedValue}/${selectedOption1}`)
+    fetch(`https://proyectoasii-vultures.onrender.com/checkAvailability/${props.id}/${selectedValue}/${selectedOption1}`)
       .then(response => response.json())
       .then(data => {
         if (data.available) {
@@ -125,13 +125,13 @@ const ProductDisplay = (props) => {
     try {
       // Verificar si hay un carrito existente para el usuario actual
       console.log("ID DE USUARIO QUE VA AL BACKEND: ", userId);
-      const cartResponse = await fetch(`http://localhost:4000/cart/${userId}`);
+      const cartResponse = await fetch(`https://proyectoasii-vultures.onrender.com/cart/${userId}`);
       const cartData = await cartResponse.json();
 
       let cartId;
       // Si no hay un carrito existente, crear uno nuevo
       if (!cartData.cartExists) {
-        const newCartResponse = await fetch(`http://localhost:4000/cart`, {
+        const newCartResponse = await fetch(`https://proyectoasii-vultures.onrender.com/cart`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -146,14 +146,14 @@ const ProductDisplay = (props) => {
     console.log("TIPOS EN ADD CARRITO:",tipos);
       // Buscar en la tabla CONFIGURACION_PRODUCTO los registros que coincidan con las opciones seleccionadas
       if (tipos.length > 1) {
-        const configurationResponse = await fetch(`http://localhost:4000/configurationProduct/${selectedOption1}/${selectedOption2}/${props.id}`);
+        const configurationResponse = await fetch(`https://proyectoasii-vultures.onrender.com/configurationProduct/${selectedOption1}/${selectedOption2}/${props.id}`);
         const configurationData = await configurationResponse.json();
         const itemId = configurationData.itemId;
       console.log(itemId, cartId);
       
 
       // Insertar un nuevo registro en la tabla CARRITO_ITEM o actualizar la cantidad si ya existe
-      const cartItemResponse = await fetch(`http://localhost:4000/cartItem/${cartId}/${itemId}`, {
+      const cartItemResponse = await fetch(`https://proyectoasii-vultures.onrender.com/cartItem/${cartId}/${itemId}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -168,14 +168,14 @@ const ProductDisplay = (props) => {
         console.error("Error al agregar producto al carrito.");
       }
       } else {
-        const configurationResponse = await fetch(`http://localhost:4000/configurationProduct/${selectedOption1}/0/${props.id}`);
+        const configurationResponse = await fetch(`https://proyectoasii-vultures.onrender.com/configurationProduct/${selectedOption1}/0/${props.id}`);
         const configurationData = await configurationResponse.json();
         const itemId = configurationData.itemId;
         console.log(itemId, cartId);
         
 
       // Insertar un nuevo registro en la tabla CARRITO_ITEM o actualizar la cantidad si ya existe
-      const cartItemResponse = await fetch(`http://localhost:4000/cartItem/${cartId}/${itemId}`, {
+      const cartItemResponse = await fetch(`https://proyectoasii-vultures.onrender.com/cartItem/${cartId}/${itemId}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -199,7 +199,7 @@ const ProductDisplay = (props) => {
   // Obtener el precio del producto al seleccionar las opciones
   useEffect(() => {
     if (selectedOption1 && selectedOption2) {
-      fetch(`http://localhost:4000/configurationProduct/${selectedOption1}/${selectedOption2}/${props.id}`)
+      fetch(`https://proyectoasii-vultures.onrender.com/configurationProduct/${selectedOption1}/${selectedOption2}/${props.id}`)
         .then(response => response.json())
         .then(data => {
           setPrice(data.price); // Establecer el precio del producto

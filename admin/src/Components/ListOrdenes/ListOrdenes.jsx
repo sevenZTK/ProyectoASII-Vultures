@@ -8,7 +8,7 @@ const ListOrdenes = () => {
 
   const fetchOrdenes = async () => {
     try {
-      const response = await fetch("http://localhost:4000/allordenes");
+      const response = await fetch("https://proyectoasii-vultures.onrender.com/allordenes");
       const data = await response.json();
       setAllOrdenes(
         data.map((orden) => ({
@@ -24,7 +24,7 @@ const ListOrdenes = () => {
 
   const fetchEstadoOptions = async () => {
     try {
-      const response = await fetch("http://localhost:4000/estadoordenes");
+      const response = await fetch("https://proyectoasii-vultures.onrender.com/estadoordenes");
       const data = await response.json();
       setEstadoOptions(data);
     } catch (error) {
@@ -58,7 +58,7 @@ const ListOrdenes = () => {
   const handleGuardar = async (id) => {
     const orden = allOrdenes.find((orden) => orden.id === id);
     try {
-      await fetch(`http://localhost:4000/modifyorder/${id}`, {
+      await fetch(`https://proyectoasii-vultures.onrender.com/modifyorder/${id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",

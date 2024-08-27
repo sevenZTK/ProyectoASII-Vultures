@@ -51,7 +51,7 @@ const AddAdmin = () => {
       return;
     }
     try {
-      const response = await fetch("http://localhost:4000/addadmin", {
+      const response = await fetch("https://proyectoasii-vultures.onrender.com/addadmin", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

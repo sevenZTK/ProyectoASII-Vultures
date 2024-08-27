@@ -12,9 +12,9 @@ const ListPromociones = () => {
 
   const fetchPromociones = async () => {
     try {
-      let url = 'http://localhost:4000/allpromociones';
+      let url = 'https://proyectoasii-vultures.onrender.com/allpromociones';
       if (searchTerm.trim() !== '') {
-        url = `http://localhost:4000/searchpromocion?search=${encodeURIComponent(searchTerm)}`;
+        url = `https://proyectoasii-vultures.onrender.com/searchpromocion?search=${encodeURIComponent(searchTerm)}`;
       }
       const response = await fetch(url);
       const data = await response.json();
@@ -43,7 +43,7 @@ const ListPromociones = () => {
 
   const removePromocion = async (id) => {
     try {
-      await fetch('http://localhost:4000/removepromocion', {
+      await fetch('https://proyectoasii-vultures.onrender.com/removepromocion', {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',

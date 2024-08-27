@@ -8,9 +8,9 @@ const ListAdmin = () => {
   // Función para obtener los usuarios de tipo 1
   const fetchUsuarios = async () => {
     try {
-      let url = 'http://localhost:4000/verAdmins';
+      let url = 'https://proyectoasii-vultures.onrender.com/verAdmins';
       if (searchTerm.trim() !== '') {
-        url = `http://localhost:4000/searchAdmin?search=${encodeURIComponent(searchTerm)}`;
+        url = `https://proyectoasii-vultures.onrender.com/searchAdmin?search=${encodeURIComponent(searchTerm)}`;
       }
       const response = await fetch(url);
       const data = await response.json();
@@ -36,7 +36,7 @@ const ListAdmin = () => {
   // Función para eliminar un usuario
   const handleDelete = async (id) => {
     try {
-      await fetch('http://localhost:4000/eliminarAdmin', {
+      await fetch('https://proyectoasii-vultures.onrender.com/eliminarAdmin', {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',

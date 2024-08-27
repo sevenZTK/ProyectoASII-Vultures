@@ -14,7 +14,7 @@ const ShopCategory = (props) => {
   
 
   const fetchInfo = () => { 
-    fetch('http://localhost:4000/allproductsDisplay') 
+    fetch('https://proyectoasii-vultures.onrender.com/allproductsDisplay') 
       .then((res) => res.json()) 
       .then((data) => {
         setAllProducts(data);
