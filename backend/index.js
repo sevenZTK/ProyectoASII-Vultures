@@ -2594,8 +2594,43 @@ app.delete('/eliminarAdmin', async (req, res) => {
   }
 });
 
+app.post('/addToWishlist', async (req, res) => {
+  const { userId, productId } = req.body; // Obtener el ID del usuario y el ID del producto desde el cuerpo de la solicitud
+  let connection;
 
-app.listen(port, (error) => {
-  if (!error) console.log("Server Running on port " + port);
-  else console.log("Error : ", error);
+  try {
+    // Establecer conexión con la base de datos
+    connection = await mysql.createConnection(dbConfig);
+
+    // Verificar si el producto ya está en la wishlist del usuario
+    const [resultCheckWishlist] = await connection.execute(
+      `SELECT id FROM WISHLIST_ITEM WHERE id_wishlist = ? AND id_item_producto = ?`,
+      [userId, productId]
+    );
+
+    if (resultCheckWishlist.length > 0) {
+      // Si el producto ya está en la wishlist, devolver un mensaje adecuado
+      res.status(400).json({ success: false, message: "El producto ya está en la wishlist del usuario" });
+    } else {
+      // Insertar el producto en la wishlist
+      await connection.execute(
+        `INSERT INTO WISHLIST_ITEM (id_wishlist, id_item_producto) VALUES (?, ?)`,
+        [userId, productId]
+      );
+
+      res.json({ success: true, message: "Producto añadido a la wishlist con éxito" });
+    }
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ success: false, error: "Error al añadir el producto a la wishlist en MySQL" });
+  } finally {
+    // Cerrar la conexión
+    if (connection) {
+      try {
+        await connection.end();
+      } catch (err) {
+        console.error(err.message);
+      }
+    }
+  }
 });
