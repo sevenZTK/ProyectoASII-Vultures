@@ -8,7 +8,7 @@ const mysql = require('mysql2/promise');
 const bcrypt = require('bcrypt');
 const saltRounds = 10;
 
-
+//prueba de envio
 
 const corsOptions = {
   origin: '*'
