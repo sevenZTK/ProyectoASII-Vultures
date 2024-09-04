@@ -3,6 +3,8 @@ import Navbar from "./Components/Navbar/Navbar";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import Shop from "./Pages/Shop";
 import Cart from "./Pages/Cart";
+import Profile from "./Pages/Profile";
+import Wishlist from "./Pages/Wishlist";
 import Product from "./Pages/Product";
 import Footer from "./Components/Footer/Footer";
 import ShopCategory from "./Pages/ShopCategory";
@@ -40,6 +42,8 @@ function App() {
               <Route path=':productId' element={<Product />} />
             </Route>
             <Route path="/cart" element={<Cart />} />
+            <Route path="/profile" element={<Profile />} />
+            <Route path="/wishlist" element={<Wishlist />} />
             <Route path="/login" element={<LoginSignup />} />
           </Routes>
         </AuthContext.Provider>
