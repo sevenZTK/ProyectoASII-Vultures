@@ -8,7 +8,7 @@ const Wishitems = () => {
 
   useEffect(() => {
     if (userId && userId !== "0") {
-      fetch(`http://localhost:4000/wishlistItems/${userId}`)
+      fetch(`https://proyectoasii-vultures.onrender.com/wishlistItems/${userId}`)
         .then((res) => res.json())
         .then((data) => {
           setDisplayedItems(data);
@@ -18,7 +18,7 @@ const Wishitems = () => {
 
   const handleRemoveItem = async (userId, itemId) => {
     try {
-      const response = await fetch("http://localhost:4000/removeWishlistItem", {
+      const response = await fetch("https://proyectoasii-vultures.onrender.com/removeWishlistItem", {
         method: "DELETE",
         headers: {
           "Content-Type": "application/json",
@@ -42,7 +42,7 @@ const Wishitems = () => {
   const handleAddToCart = async (userId, wishlistItemId) => {
     try {
       // Obtener el ID del ITEM_PRODUCTO desde la lista de deseos
-      const wishlistResponse = await fetch(`http://localhost:4000/wishlistItem/${wishlistItemId}`);
+      const wishlistResponse = await fetch(`https://proyectoasii-vultures.onrender.com/wishlistItem/${wishlistItemId}`);
       const wishlistItem = await wishlistResponse.json();
 
       if (!wishlistItem) {
@@ -53,7 +53,7 @@ const Wishitems = () => {
       const itemProductId = wishlistItem.id_item_producto;
 
       // Verificar si el usuario ya tiene un carrito
-      const cartResponse = await fetch(`http://localhost:4000/cart/${userId}`);
+      const cartResponse = await fetch(`https://proyectoasii-vultures.onrender.com/cart/${userId}`);
       const cartData = await cartResponse.json();
 
       let cartId;
@@ -62,7 +62,7 @@ const Wishitems = () => {
         cartId = cartData.cartId;
       } else {
         // Crear un nuevo carrito si no existe
-        const createCartResponse = await fetch("http://localhost:4000/cart", {
+        const createCartResponse = await fetch("https://proyectoasii-vultures.onrender.com/cart", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -74,7 +74,7 @@ const Wishitems = () => {
       }
 
       // Agregar el ítem al carrito
-      const addToCartResponse = await fetch(`http://localhost:4000/cartItem/${cartId}/${itemProductId}`, {
+      const addToCartResponse = await fetch(`https://proyectoasii-vultures.onrender.com/cartItem/${cartId}/${itemProductId}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -86,7 +86,7 @@ const Wishitems = () => {
 
       if (addToCartData.success) {
         // Eliminar el ítem de la lista de deseos
-        const removeFromWishlistResponse = await fetch("http://localhost:4000/removeWishlistItem", {
+        const removeFromWishlistResponse = await fetch("https://proyectoasii-vultures.onrender.com/removeWishlistItem", {
           method: "DELETE",
           headers: {
             "Content-Type": "application/json",

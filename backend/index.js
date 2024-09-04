@@ -2594,43 +2594,299 @@ app.delete('/eliminarAdmin', async (req, res) => {
   }
 });
 
-app.post('/addToWishlist', async (req, res) => {
-  const { userId, productId } = req.body; // Obtener el ID del usuario y el ID del producto desde el cuerpo de la solicitud
+// Endpoint para obtener la lista de deseos de un usuario
+app.get('/wishlist/:userId', async (req, res) => {
   let connection;
 
   try {
-    // Establecer conexión con la base de datos
+    const userId = req.params.userId;
     connection = await mysql.createConnection(dbConfig);
-
-    // Verificar si el producto ya está en la wishlist del usuario
-    const [resultCheckWishlist] = await connection.execute(
-      `SELECT id FROM WISHLIST_ITEM WHERE id_wishlist = ? AND id_item_producto = ?`,
-      [userId, productId]
+    
+    // Verificar si el usuario existe antes de ejecutar la consulta
+    const [userCheck] = await connection.execute(
+      `SELECT 1 FROM USUARIO WHERE id = ?`,
+      [userId]
     );
 
-    if (resultCheckWishlist.length > 0) {
-      // Si el producto ya está en la wishlist, devolver un mensaje adecuado
-      res.status(400).json({ success: false, message: "El producto ya está en la wishlist del usuario" });
-    } else {
-      // Insertar el producto en la wishlist
-      await connection.execute(
-        `INSERT INTO WISHLIST_ITEM (id_wishlist, id_item_producto) VALUES (?, ?)`,
-        [userId, productId]
-      );
-
-      res.json({ success: true, message: "Producto añadido a la wishlist con éxito" });
+    // Si el usuario no existe, devolver un mensaje apropiado
+    if (userCheck.length === 0) {
+      await connection.end();
+      return res.status(404).json({ error: 'Usuario no encontrado' });
     }
-  } catch (err) {
-    console.error(err.message);
-    res.status(500).json({ success: false, error: "Error al añadir el producto a la wishlist en MySQL" });
+
+    // Si el usuario existe, ejecutar la consulta para buscar la wishlist
+    const [result] = await connection.execute(
+      `SELECT id FROM WISHLIST WHERE id_usuario = ?`,
+      [userId]
+    );
+
+    console.log("Usuario que ya tiene wishlist: ", userId);
+    console.log("Wishlist del Usuario que ya tiene wishlist: ", result[0]);
+
+    await connection.end();
+    
+    if (result.length > 0) {
+      res.json({ wishlistExists: true, wishlistId: result[0].id });
+    } else {
+      res.json({ wishlistExists: false });
+    }
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
   } finally {
-    // Cerrar la conexión
     if (connection) {
       try {
         await connection.end();
-      } catch (err) {
-        console.error(err.message);
+      } catch (error) {
+        console.error(error);
       }
     }
   }
+});
+
+// Endpoint para crear una nueva wishlist para el usuario actual
+app.post('/wishlist', async (req, res) => {
+  try {
+    const { userId } = req.body;
+    const connection = await mysql.createConnection(dbConfig);
+
+    const [result] = await connection.execute(
+      'INSERT INTO WISHLIST (id_usuario) VALUES (?)',
+      [userId]
+    );
+
+    // Obtener el ID de la wishlist insertada
+    const wishlistId = result.insertId;
+
+    await connection.end();
+    res.json({ wishlistId });
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// Endpoint para agregar un nuevo registro o actualizar la cantidad en WISHLIST_ITEM
+app.post('/wishlistItem/:wishlistId/:itemId', async (req, res) => {
+  try {
+    const wishlistId = parseInt(req.params.wishlistId);
+    const itemId = parseInt(req.params.itemId);
+    const { quantity } = req.body;
+    
+    console.log("Wishlist ID:", wishlistId);
+    console.log("Item ID:", itemId);
+    console.log("Quantity:", quantity);
+
+    const connection = await mysql.createConnection(dbConfig);
+
+    // Comprobación si el registro ya existe en la tabla WISHLIST_ITEM
+    const [checkResult] = await connection.execute(
+      `SELECT id FROM WISHLIST_ITEM WHERE id_wishlist = ? AND id_item_producto = ?`,
+      [wishlistId, itemId]
+    );
+
+    if (checkResult.length > 0) {
+      // Si el registro ya existe, actualizar la cantidad
+      await connection.execute(
+        `UPDATE WISHLIST_ITEM SET cantidad = cantidad + ? 
+        WHERE id_wishlist = ? AND id_item_producto = ?`,
+        [quantity, wishlistId, itemId]
+      );
+    } else {
+      // Si el registro no existe, insertar uno nuevo
+      await connection.execute(
+        `INSERT INTO WISHLIST_ITEM (id_wishlist, id_item_producto, cantidad) 
+        VALUES (?, ?, ?)`,
+        [wishlistId, itemId, quantity]
+      );
+    }
+
+    await connection.commit();
+    await connection.end();
+    res.json({ success: true, message: 'Producto agregado a la lista de deseos con éxito.' });
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+app.get("/wishlistItems/:userId", async (req, res) => {
+  const userId = req.params.userId;
+  try {
+    const connection = await mysql.createConnection(dbConfig);
+
+    const [rows] = await connection.execute(
+      `SELECT wi.id, p.imagen_producto1, 
+       CONCAT(p.nombre_producto, ' ', 
+       COALESCE(GROUP_CONCAT(opv.valor ORDER BY opv.valor SEPARATOR ', '), '')) AS nombre_producto, 
+       ip.precio, wi.cantidad, ip.id_producto
+       FROM WISHLIST_ITEM wi
+       INNER JOIN ITEM_PRODUCTO ip ON wi.id_item_producto = ip.id
+       INNER JOIN PRODUCTO p ON ip.id_producto = p.id
+       LEFT JOIN CONFIGURACION_PRODUCTO cp ON wi.id_item_producto = cp.id_item_producto
+       LEFT JOIN OPCION_VARIACION opv ON cp.id_opcion_variacion = opv.id
+       WHERE wi.id_wishlist = (SELECT id FROM WISHLIST WHERE id_usuario = ?) AND ip.estado = 1
+       GROUP BY wi.id, p.imagen_producto1, p.nombre_producto, ip.precio, wi.cantidad, ip.id_producto`,
+      [userId]
+    );
+
+    const items = [];
+    for (const row of rows) {
+      const productId = row.id_producto;
+      const discount = await getDiscount(connection, productId);
+      items.push({
+        id: row.id,
+        imagen_producto1: row.imagen_producto1,
+        nombre_producto: row.nombre_producto,
+        precio: row.precio,
+        cantidad: row.cantidad,
+        descuento: discount
+      });
+    }
+
+    await connection.end();
+    res.json(items);
+  } catch (error) {
+    console.error('Error al obtener los ítems de la lista de deseos:', error);
+    res.status(500).json([]);
+  }
+});
+
+app.put("/wishlistItems/updateQuantity/:itemId", async (req, res) => {
+  const itemId = req.params.itemId;
+  const operation = req.body.operation;
+
+  try {
+    const connection = await mysql.createConnection(dbConfig);
+    
+    let query;
+    if (operation === "increment") {
+      query = `UPDATE WISHLIST_ITEM SET cantidad = cantidad + 1 WHERE id = ?`;
+    } else if (operation === "decrement") {
+      query = `UPDATE WISHLIST_ITEM SET cantidad = cantidad - 1 WHERE id = ? AND cantidad > 1`;
+    }
+    
+    await connection.execute(query, [itemId]);
+
+    const [updatedItemResult] = await connection.execute(
+      `SELECT * FROM WISHLIST_ITEM WHERE id = ?`,
+      [itemId]
+    );
+    const updatedItem = updatedItemResult[0];
+
+    await connection.end();
+
+    res.json(updatedItem);
+  } catch (error) {
+    console.error('Error al actualizar la cantidad:', error);
+    res.status(500).json({ error: 'Error al actualizar la cantidad' });
+  }
+});
+
+app.delete('/removeWishlistItem', async (req, res) => {
+  let connection;
+  try {
+    const userId = req.body.userId;
+    const itemId = parseInt(req.body.itemId);
+
+    connection = await mysql.createConnection(dbConfig);
+    const getWishlistIdQuery = `SELECT id FROM WISHLIST WHERE id_usuario = ?`;
+    const [wishlistIdResult] = await connection.execute(getWishlistIdQuery, [userId]);
+
+    if (wishlistIdResult.length === 0) {
+      return res.status(404).json({ success: false, error: 'El usuario no tiene una lista de deseos' });
+    }
+
+    const wishlistId = parseInt(wishlistIdResult[0].id);
+
+    console.log(wishlistId, itemId);
+    
+    const deleteWishlistItemQuery = `DELETE FROM WISHLIST_ITEM WHERE id = ?`;
+    const [deleteResult] = await connection.execute(deleteWishlistItemQuery, [itemId]);
+
+    if (deleteResult.affectedRows && deleteResult.affectedRows === 1) {
+      return res.json({ success: true, message: '¡Artículo eliminado de la lista de deseos exitosamente!' });
+    } else {
+      return res.status(500).json({ success: false, error: 'Error al eliminar el artículo de la lista de deseos' });
+    }
+  } catch (error) {
+    console.error('Error removing wishlist item:', error);
+    return res.status(500).json({ success: false, error: 'Error al eliminar el artículo de la lista de deseos' });
+  } finally {
+    if (connection) {
+      try {
+        await connection.end();
+      } catch (closeError) {
+        console.error('Error al cerrar la conexión:', closeError);
+      }
+    }
+  }
+});
+
+
+app.get('/wishlistItem/:wishlistItemId', async (req, res) => {
+  const wishlistItemId = req.params.wishlistItemId;
+  try {
+    const connection = await mysql.createConnection(dbConfig);
+
+    const [rows] = await connection.execute(
+      `SELECT * FROM WISHLIST_ITEM WHERE id = ?`,
+      [wishlistItemId]
+    );
+
+    await connection.end();
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Ítem de la lista de deseos no encontrado' });
+    }
+
+    res.json(rows[0]);
+  } catch (error) {
+    console.error('Error al obtener el ítem de la lista de deseos:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+
+app.post('/cartItem/:cartId/:itemProductId', async (req, res) => {
+  try {
+    const cartId = parseInt(req.params.cartId);
+    const itemProductId = parseInt(req.params.itemProductId);
+    const { quantity } = req.body;
+
+    const connection = await mysql.createConnection(dbConfig);
+
+    // Comprobación si el registro ya existe en la tabla CARRITO_ITEM
+    const [checkResult] = await connection.execute(
+      `SELECT id FROM CARRITO_ITEM WHERE id_carrito = ? AND id_item_producto = ?`,
+      [cartId, itemProductId]
+    );
+
+    if (checkResult.length > 0) {
+      // Si el registro ya existe, actualizar la cantidad
+      await connection.execute(
+        `UPDATE CARRITO_ITEM SET cantidad = cantidad + ? 
+        WHERE id_carrito = ? AND id_item_producto = ?`,
+        [quantity, cartId, itemProductId]
+      );
+    } else {
+      // Si el registro no existe, insertar uno nuevo
+      await connection.execute(
+        `INSERT INTO CARRITO_ITEM (id_carrito, id_item_producto, cantidad) 
+        VALUES (?, ?, ?)`,
+        [cartId, itemProductId, quantity]
+      );
+    }
+
+    await connection.end();
+    res.json({ success: true, message: 'Producto agregado al carrito con éxito.' });
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+app.listen(port, (error) => {
+  if (!error) console.log("Server Running on port " + port);
+  else console.log("Error : ", error);
 });
