@@ -32,7 +32,7 @@ const Navbar = () => {
   useEffect(() => {
     const fetchParentCategories = async () => {
       try {
-        const response = await fetch('https://proyectoasii-vultures.onrender.com/ParentCategoriesNav');
+        const response = await fetch('http://localhost:4000/ParentCategoriesNav');
         if (response.ok) {
           const data = await response.json();
           setParentCategories(data);
@@ -49,7 +49,7 @@ const Navbar = () => {
 
   const fetchSubCategories = async (categoryId) => {
     try {
-      const response = await fetch(`https://proyectoasii-vultures.onrender.com/SubCategories/${categoryId}`);
+      const response = await fetch(`http://localhost:4000/SubCategories/${categoryId}`);
       if (response.ok) {
         const data = await response.json();
         return data;
@@ -161,6 +161,8 @@ const Navbar = () => {
     {setCartItemCount(cartItemCount)}
     {cartItemCount !== 0 && <div className='nav-cart-count'>{cartItemCount}</div>}
   </Link>
+  
+  
 ) : (
   <button onClick={() => alert("Debes iniciar sesión antes de ver el carrito.")}>
     <img src={cart_icon} alt='cart' />
@@ -168,6 +170,35 @@ const Navbar = () => {
     {cartItemCount !== 0 && <div className='nav-cart-count'>{cartItemCount}</div>}
   </button>
 )}
+
+{userId && userId !== "0" ? (
+  <Link to='/wishlist'>
+    Wishlist
+    
+  </Link>
+  
+  
+) : (
+  <button onClick={() => alert("Debes iniciar sesión antes de ver la lista de deseos.")}>
+    Wishlist
+    {setCartItemCount(cartItemCount)}
+  </button>
+)}
+
+{userId && userId !== "0" ? (
+  <Link to='/profile'>
+    Mi Perfil
+    
+  </Link>
+  
+  
+) : (
+  <button onClick={() => alert("Debes iniciar sesión antes de ver tu perfil.")}>
+    Mi Perfil
+    {setCartItemCount(cartItemCount)}
+  </button>
+)}
+
 
       </div>
     </div>
