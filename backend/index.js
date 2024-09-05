@@ -2890,3 +2890,36 @@ app.listen(port, (error) => {
   if (!error) console.log("Server Running on port " + port);
   else console.log("Error : ", error);
 });
+
+// Consulta de perfil de un solo usuario
+app.get('/usuario/:id', async (req, res) => {
+  const userId = req.params.id;
+
+  try {
+      const [rows] = await pool.query(`
+          SELECT 
+              u.nombre, u.apellido, u.correo, u.telefono,
+              t.nombre AS tipo_usuario,
+              d.direccion, d.estado, d.ciudad, d.codigo_postal, p.nombre_pais
+          FROM USUARIO u
+          JOIN TIPO_USUARIO t ON u.id_tipo = t.id
+          LEFT JOIN DIRECCION_USUARIO du ON u.id = du.id_usuario
+          LEFT JOIN DIRECCION d ON du.id_direccion = d.id
+          LEFT JOIN PAIS p ON d.id_pais = p.id
+          WHERE u.id = ?
+      `, [userId]);
+
+      if (rows.length > 0) {
+          res.json(rows[0]);
+      } else {
+          res.status(404).json({ message: 'Usuario no encontrado' });
+      }
+  } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: 'Error en el servidor' });
+  }
+});
+
+app.listen(port, () => {
+  console.log(`Servidor corriendo en http://localhost:${port}`);
+});
