@@ -1,5 +1,6 @@
 import React, { useContext, useEffect, useState } from "react";
 import "./ProfileItems.css";
+import profile_icon from '../Assets/profile-icon.png';
 import { useParams } from "react-router-dom";
 
 const ProfileItems = () => {
@@ -25,6 +26,7 @@ const ProfileItems = () => {
   return (
     <div className="profile-page">
       <h1>Perfil de Usuario</h1>
+      <img src={profile_icon} alt='cart' />
       <div className="profile-info">
         <p><strong>Nombre:</strong> {user.nombre}</p>
         <p><strong>Apellido:</strong> {user.apellido}</p>

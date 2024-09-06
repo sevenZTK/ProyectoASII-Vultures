@@ -2892,34 +2892,26 @@ app.listen(port, (error) => {
 });
 
 // Consulta de perfil de un solo usuario
-app.get('/usuario/:id', async (req, res) => {
-  const userId = req.params.id;
+app.get('/user/:userId', async (req, res) => {
+  const userId = req.params.userId;
 
   try {
-      const [rows] = await pool.query(`
-          SELECT 
-              u.nombre, u.apellido, u.correo, u.telefono,
-              t.nombre AS tipo_usuario,
-              d.direccion, d.estado, d.ciudad, d.codigo_postal, p.nombre_pais
-          FROM USUARIO u
-          JOIN TIPO_USUARIO t ON u.id_tipo = t.id
-          LEFT JOIN DIRECCION_USUARIO du ON u.id = du.id_usuario
-          LEFT JOIN DIRECCION d ON du.id_direccion = d.id
-          LEFT JOIN PAIS p ON d.id_pais = p.id
-          WHERE u.id = ?
-      `, [userId]);
+    const connection = await mysql.createConnection(dbConfig);
 
-      if (rows.length > 0) {
-          res.json(rows[0]);
-      } else {
-          res.status(404).json({ message: 'Usuario no encontrado' });
-      }
+    const [rows] = await connection.execute(
+      `SELECT id, id_tipo, nombre, apellido, correo, telefono FROM USUARIO WHERE id = ?`,
+      [userId]
+    );
+
+    await connection.end();
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    res.json(rows[0]);
   } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: 'Error en el servidor' });
+    console.error('Error al obtener el perfil del usuario:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
   }
-});
-
-app.listen(port, () => {
-  console.log(`Servidor corriendo en http://localhost:${port}`);
 });
