@@ -2915,3 +2915,50 @@ app.get('/user/:userId', async (req, res) => {
     res.status(500).json({ error: 'Internal Server Error' });
   }
 });
+
+app.get('/orders/:userId', async (req, res) => {
+  let connection;
+  const userId = req.params.userId;
+
+  // Validar que userId sea un número
+  if (isNaN(userId)) {
+    return res.status(400).json({ error: 'ID de usuario no válido' });
+  }
+
+  try {
+    connection = await mysql.createConnection(dbConfig);
+
+    const [userCheck] = await connection.execute(
+      `SELECT 1 FROM USUARIO WHERE id = ?`,
+      [userId]
+    );
+
+    if (userCheck.length === 0) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    const [orders] = await connection.execute(
+      `SELECT id, fecha, estado, total 
+       FROM ORDEN 
+       WHERE id_usuario = ?`,
+      [userId]
+    );
+
+    if (orders.length > 0) {
+      res.json({ orders });
+    } else {
+      res.json({ message: 'El usuario no tiene pedidos.' });
+    }
+  } catch (error) {
+    console.error('Error al obtener los pedidos:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  } finally {
+    if (connection) {
+      try {
+        await connection.end();
+      } catch (closeError) {
+        console.error('Error al cerrar la conexión:', closeError);
+      }
+    }
+  }
+});
